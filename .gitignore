@@ -1,0 +1,8 @@
+.env
+*.log
+*.pyc
+*.swp
+*~
+tags
+.cache/
+.idea/*
