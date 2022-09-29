@@ -12,7 +12,7 @@ from pony.orm import (
 
 import settings
 
-set_sql_debug(settings.DEBUG)
+# set_sql_debug(settings.DEBUG)
 
 
 def define_entities(db):

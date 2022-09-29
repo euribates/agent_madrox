@@ -2,33 +2,12 @@
 # -*- coding: utf-8 -*-
 
 from datetime import date, datetime
-from contextlib import contextmanager
+import logging
 
 from pony.orm import Database, set_sql_debug, db_session, select
 
+from clitools import ERROR, OK, SKIP, red, green, yellow
 from models import open_source_database, open_target_database
-
-
-def red(msg):
-    """Devuelve el texto en color rojo (Para terminal/consola ANSI)."""
-    return f"\u001b[31m{msg}\u001b[0m"
-
-
-def green(msg):
-    """Devuelve el texto en color verde (Para terminal/consola ANSI).
-    """
-    return f"\u001b[32m{msg}\u001b[0m"
-
-
-def yellow(msg):
-    """Devuelve el texto en color amarillo (Para terminal/consola ANSI).
-    """
-    return f"\u001b[33m{msg}\u001b[0m"
-
-
-ERROR = red("[✖]")
-OK = green("[✓]")
-SKIPPED = yellow("[⤼]")
 
 
 def migrar_sala(db_source, db_target, id_sala: int) -> int:
@@ -40,16 +19,16 @@ def migrar_sala(db_source, db_target, id_sala: int) -> int:
                 values = source_item.to_dict(exclude="id_sala")
                 new_sesion = db_target.Sala(id_sala=id_sala, **values)
                 new_sesion.flush()
-                print(f"- Update Sala {OK}")
+                logging.info(f"- Update Sala {OK}")
                 return 1
             new_values = source_item.to_dict(exclude="id_sala")
             old_values = target_item.to_dict(exclude="id_sala")
             if new_values != old_values:  # Update
                 target_item.set(**new_values)
                 target_item.flush()
-                print(f"- Insert Sala {OK}")
+                logging.info(f"- Insert Sala {OK}")
                 return 1
-    print(f"- Skipped Sala {SKIPPED}")
+    logging.info(f"- Skipped Sala {SKIP}")
     return 0
 
 
@@ -62,16 +41,16 @@ def migrar_organo(db_source, db_target, id_organo: str) -> int:
                 values = source_item.to_dict(exclude="id_organo")
                 new_sesion = db_target.Organo(id_organo=id_organo, **values)
                 new_sesion.flush()
-                print(f"- Update Organo {OK}")
+                logging.info(f"- Update Organo {OK}")
                 return 1
             new_values = source_item.to_dict(exclude="id_organo")
             old_values = target_item.to_dict(exclude="id_organo")
             if new_values != old_values:  # Update
                 target_item.set(**new_values)
                 target_item.flush()
-                print(f"- Insert Organo {OK}")
+                logging.info(f"- Insert Organo {OK}")
                 return 1
-    print(f"- Skipped Organo {SKIPPED}")
+    logging.info(f"- Skipped Organo {SKIP}")
     return 0
 
 
@@ -86,16 +65,16 @@ def migrar_sesion(db_source, db_target, id_sesion: str) -> int:
                 values = source_item.to_dict(exclude="id_sesion")
                 new_sesion = db_target.Sesion(id_sesion=id_sesion, **values)
                 new_sesion.flush()
-                print(f"- Update Sesion {OK}")
+                logging.info(f"- Update Sesion {OK}")
                 return 1
             new_values = source_item.to_dict(exclude="id_sesion")
             old_values = target_item.to_dict(exclude="id_sesion")
             if new_values != old_values:  # Update
                 target_item.set(**new_values)
                 target_item.flush()
-                print(f"- Insert Sesion {OK}")
+                logging.info(f"- Insert Sesion {OK}")
                 return 1
-    print(f"- Skipped Sesion {SKIPPED}")
+    logging.info(f"- Skipped Sesion {SKIP}")
     return 0
 
 
@@ -108,16 +87,16 @@ def migrar_sesion_datos(db_source, db_target, id_sesion: str) -> int:
                 values = source_item.to_dict(exclude="id_sesion")
                 new_sesion = db_target.SesionDatos(id_sesion=id_sesion, **values)
                 new_sesion.flush()
-                print(f"- Update SesionDatos {OK}")
+                logging.info(f"- Update SesionDatos {OK}")
                 return 1
-            new_values = source_item.to_dict(exclude="id_sesion")
-            old_values = target_item.to_dict(exclude="id_sesion")
-            if new_values != old_values:  # Update
-                target_item.set(**new_values)
-                target_item.flush()
-                print(f"- Insert SesionDatos {OK}")
-                return 1
-    print(f"- Skipped SesionDatos {SKIPPED}")
+            # new_values = source_item.to_dict(exclude="id_sesion")
+            # old_values = target_item.to_dict(exclude="id_sesion")
+            # if new_values != old_values:  # Update
+                # target_item.set(**new_values)
+                # target_item.flush()
+                # logging.info(f"- Insert SesionDatos {OK}")
+                # return 1
+    logging.info(f"- Skipped SesionDatos {SKIP}")
     return 0
 
 
@@ -126,8 +105,8 @@ def migrar_jornada(db_source, db_target, id_jornada):
         source_item = db_source.Jornada.get(id_jornada=id_jornada)
         if source_item.id_sala:
             migrar_sala(db_source, db_target, source_item.id_sala)
-        if source_item.id_organo:
-            migrar_organo(db_source, db_target, source_item.id_organo)
+        # if source_item.id_organo:
+            # migrar_organo(db_source, db_target, source_item.id_organo)
         if source_item.id_sesion:
             migrar_sesion(db_source, db_target, source_item.id_sesion)
             migrar_sesion_datos(db_source, db_target, source_item.id_sesion)
@@ -137,27 +116,25 @@ def migrar_jornada(db_source, db_target, id_jornada):
                 values = source_item.to_dict(exclude="id_jornada")
                 new_sesion = db_target.Jornada(id_jornada=id_jornada, **values)
                 new_sesion.flush()
-                print(f"- Update Jornada {OK}")
-                return 1
+                logging.info(f"- Update Jornada {OK}")
+                return True, ''
             new_values = source_item.to_dict(exclude="id_jornada")
             old_values = target_item.to_dict(exclude="id_jornada")
             if new_values != old_values:  # Update
                 target_item.set(**new_values)
                 target_item.flush()
-                print(f"- Insert Jornada {OK}")
-                return 1
-    print(f"- Skipped Jornada {SKIPPED}")
-    return 0
+                logging.info(f"- Insert Jornada {OK}")
+                return True, ''
+    logging.info(f"- Skipped Jornada {SKIP}")
+    return False, 'Skipped'
 
 
-@contextmanager
-def frame_decoration(titulo, *args, **kwargs):
-    l = len(titulo)
-    print(f"--[ {titulo} ]{'-'* (66 - l)}")
-    try:
-        yield
-    finally:
-        print(f"{'-'*72}")
+def disable_triggers(db_handler):
+    db_handler.execute('alter trigger agora.CREAR_JORNADAS disable')
+
+
+def enable_triggers(db_handler):
+    db_handler.execute('alter trigger agora.CREAR_JORNADAS enable')
 
 
 def main():
@@ -165,10 +142,14 @@ def main():
     db_source = open_source_database()
     db_target = open_target_database()
     with db_session():
-        for jornada in select(_ for _ in db_source.Jornada if _.fecha >= hoy):
-            with frame_decoration(f"Jornada {jornada.id_jornada}"):
-                print(f"- {jornada.descripcion}")
-                migrar_jornada(db_source, db_target, jornada.id_jornada)
+        disable_triggers(db_target)
+        try:
+            for jornada in select(_ for _ in db_source.Jornada if _.fecha >= hoy):
+                print(f"- {jornada.id_jornada}: {jornada.descripcion}", end=" ")
+                success, error_message = migrar_jornada(db_source, db_target, jornada.id_jornada)
+                print(OK if success else f"{ERROR} {error_message}")
+        finally:
+            enable_triggers(db_target)
 
 
 if __name__ == "__main__":
