@@ -87,15 +87,37 @@ def migrar_sesion_datos(db_source, db_target, id_sesion: str) -> int:
                 values = source_item.to_dict(exclude="id_sesion")
                 new_sesion = db_target.SesionDatos(id_sesion=id_sesion, **values)
                 new_sesion.flush()
+                logging.info(f"- Insert SesionDatos {OK}")
+                return 1
+            new_values = source_item.to_dict(exclude="id_sesion")
+            old_values = target_item.to_dict(exclude="id_sesion")
+            if new_values != old_values:  # Update
+                target_item.set(**new_values)
+                target_item.flush()
                 logging.info(f"- Update SesionDatos {OK}")
                 return 1
-            # new_values = source_item.to_dict(exclude="id_sesion")
-            # old_values = target_item.to_dict(exclude="id_sesion")
-            # if new_values != old_values:  # Update
-                # target_item.set(**new_values)
-                # target_item.flush()
-                # logging.info(f"- Insert SesionDatos {OK}")
-                # return 1
+    logging.info(f"- Skipped SesionDatos {SKIP}")
+    return 0
+
+
+def migrar_asuntos(db_source, db_target, id_sesion: str) -> int:
+    if id_sesion:
+        source_item = db_source.SesionDatos.get(id_sesion=id_sesion)
+        if source_item:
+            target_item = db_target.SesionDatos.get(id_sesion=id_sesion)
+            if not target_item:  # Insert
+                values = source_item.to_dict(exclude="id_sesion")
+                new_sesion = db_target.SesionDatos(id_sesion=id_sesion, **values)
+                new_sesion.flush()
+                logging.info(f"- Insert SesionDatos {OK}")
+                return 1
+            new_values = source_item.to_dict(exclude="id_sesion")
+            old_values = target_item.to_dict(exclude="id_sesion")
+            if new_values != old_values:  # Update
+                target_item.set(**new_values)
+                target_item.flush()
+                logging.info(f"- Update SesionDatos {OK}")
+                return 1
     logging.info(f"- Skipped SesionDatos {SKIP}")
     return 0
 
@@ -110,21 +132,22 @@ def migrar_jornada(db_source, db_target, id_jornada):
         if source_item.id_sesion:
             migrar_sesion(db_source, db_target, source_item.id_sesion)
             migrar_sesion_datos(db_source, db_target, source_item.id_sesion)
+            migrar_asuntos(db_source, db_target, source_item.id_sesion)
         if source_item:
             target_item = db_target.Jornada.get(id_jornada=id_jornada)
             if not target_item:  # Insert
                 values = source_item.to_dict(exclude="id_jornada")
                 new_sesion = db_target.Jornada(id_jornada=id_jornada, **values)
                 new_sesion.flush()
-                logging.info(f"- Update Jornada {OK}")
-                return True, ''
+                logging.info(f"- Insert Jornada {OK}")
+                return True, 'Inserted'
             new_values = source_item.to_dict(exclude="id_jornada")
             old_values = target_item.to_dict(exclude="id_jornada")
             if new_values != old_values:  # Update
                 target_item.set(**new_values)
                 target_item.flush()
-                logging.info(f"- Insert Jornada {OK}")
-                return True, ''
+                logging.info(f"- Update Jornada {OK}")
+                return True, 'Updated'
     logging.info(f"- Skipped Jornada {SKIP}")
     return False, 'Skipped'
 
@@ -146,8 +169,8 @@ def main():
         try:
             for jornada in select(_ for _ in db_source.Jornada if _.fecha >= hoy):
                 print(f"- {jornada.id_jornada}: {jornada.descripcion}", end=" ")
-                success, error_message = migrar_jornada(db_source, db_target, jornada.id_jornada)
-                print(OK if success else f"{ERROR} {error_message}")
+                success, message = migrar_jornada(db_source, db_target, jornada.id_jornada)
+                print(f"{OK} {message}" if success else f"{ERROR} {message}")
         finally:
             enable_triggers(db_target)
 

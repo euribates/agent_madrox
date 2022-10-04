@@ -82,6 +82,39 @@ def define_entities(db):
         )
 
 
+    class Asunto(db.Entity):
+        _table_ = ("AGORA", "ASUNTO")
+
+        id_asunto = PrimaryKey(str, max_len=14)
+        id_sesion = Required(str, max_len=11)
+        legislatura = Required(int)
+        n_orden_asunto = Required(int)
+        n_orden_tramite = Required(int)
+        id_iniciativa = Required(str, max_len=13)
+        descripcion = Required(str, max_len=110)
+        n_sesion = Required(int)
+        punto = Required(int)
+        subpunto = Optional(int)
+        extracto = Optional(str, max_len=4000)
+        id_tramite = Optional(str, max_len=16)
+        codorg = Required(int)
+        pendiente = Required(
+            str,
+            max_len=1,
+            default='N',
+            py_check=lambda val: val in {'S', 'N'},
+        )
+        id_usuario = Required(str, max_len=8)
+        ts_mod = Required(str, max_len=14)
+        migrable = Required(
+            str,
+            max_len=1,
+            default='N',
+            py_check=lambda val: val in {'S', 'N'},
+        )
+        extracto2 = Optional(str, max_len=4000)
+
+
     class Sala(db.Entity):
         _table_ = ("AGORA", "SALA")
 

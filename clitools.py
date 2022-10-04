@@ -24,15 +24,15 @@ def yellow(msg):
     return f"\u001b[33m{msg}\u001b[0m"
 
 
-ERROR = red("[✖]")
+ERROR = red("✖")
 
-OK = green("[✓]")
+OK = green("✓")
 
-WAITING = yellow("[⧗]")
+WAITING = yellow("⧗")
 
-FIXED = yellow("[⚒]")
+FIXED = yellow("⚒")
 
-SKIP = yellow("[⤼]")
+SKIP = yellow("⤼")
 
 
 class Tabula:
