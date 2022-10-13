@@ -1,6 +1,8 @@
 #!/usr/bin/env python3
 
 from datetime import date, datetime
+from dataclasses import dataclass
+
 
 from pony.orm import (
     Database,
@@ -13,6 +15,65 @@ from pony.orm import (
 import settings
 
 # set_sql_debug(settings.DEBUG)
+
+
+@dataclass
+class TableIsla:
+    _table_name = "AGORA.ISLA"
+    _primary_key = 'id_isla'
+    _required = [
+        'id_isla',
+        'descripcion',
+        ]
+    _depends_on = []
+
+    id_isla: int
+    descripcion: str
+    ts_mod: str
+    migrable: str
+
+
+@dataclass
+class TableOrgano:
+    _table_name = "AGORA.ORGANO"
+    _primary_key = 'id_organo'
+    _required = [
+        'legislatura',
+        'nombre',
+        'constitucion',
+        'tipo',
+        'tipo_comision',
+        'codorg',
+        ]
+    _depends_on = [
+        TableIsla,
+    ]
+    id_organo: str
+    legislatura: int
+    alias: str
+    nombre: str
+    direccion:str
+    constitucion:datetime.date
+    disolucion:datetime.date
+    cp:str
+    fax:str
+    id_isla:int
+    municipio:str
+    telefono:str
+    tipo:int
+    id_usuario:str
+    ts_mod:str
+    tipo_comision:int
+    codorg:int
+    id_sala_habitual:int
+    id_tramite_organo:str
+    migrable:str
+    url:str
+    descripcion:str
+    id_letrado:str
+    nombre_completo:str
+
+
 
 
 def define_entities(db):
