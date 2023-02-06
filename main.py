@@ -1,14 +1,16 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 
-from datetime import date, datetime, timedelta
-import sys
 import logging
+import sys
+from datetime import date, datetime, timedelta
 
-from pony.orm import Database, set_sql_debug, db_session, select
+from pony.orm import Database, db_session, select, set_sql_debug
 
-from clitools import ERROR, OK, SKIP, red, green, yellow
+from clitools import ERROR, OK, SKIP, green, red, yellow
+import dba
 from models import open_source_database, open_target_database
+from models import Tarea
 
 
 def migrar_sala(db_source, db_target, id_sala: int) -> int:
@@ -168,22 +170,63 @@ def enable_triggers(db_handler):
         db_handler.execute('alter trigger agora.CREAR_JORNADAS enable')
 
 
+def migrar_tarea(db_source, db_target, id_tarea):
+    print(f"Migrando tarea {id_tarea}")
+    source_item = Tarea.load_instance(db_source, id_tarea)
+    if not source_item:
+        return False, f"Unable to load Tarea {id_tarea}"
+    # Falta Dependecies migrated
+    target_item = Tarea.load_instance(db_target, id_tarea)
+    if not target_item:  # Insert
+        values = Tarea.to_dict(source_item)
+        print(Tarea.insert(db_target, values))
+        logging.info(f"- Insert tarea {OK}")
+        return True, 'Inserted'
+    new_values = Tarea.to_dict(source_item, exclude={"id_jornada"})
+    old_values = Tarea.to_dict(target_item, exclude={"id_jornada"})
+    if new_values != old_values:  # Update
+        diff_values = {}
+        for name in old_values:
+            if new_values[name] != old_values[name]:
+                diff_values[name] = new_values[name]
+        print(target_item.update(db_target, id_tarea, diff_values))
+        logging.info(f"- Update Jornada {OK}")
+        return True, 'Updated'
+    logging.info(f"- Skipped tarea {SKIP}")
+    return True, 'Skipped'
+
+
 def main():
     argc = len(sys.argv)
     num_dias = int(sys.argv[1]) if argc > 1 else 1
     fecha = date.today() - timedelta(days=num_dias)
-    print(f"Actualizando jornadas desde {fecha} (hace {num_dias} dias)")
-    db_source = open_source_database()
-    db_target = open_target_database()
-    disable_triggers(db_target)
-    try:
-        with db_session():
-            for jornada in select(_ for _ in db_source.Jornada if _.fecha >= fecha):
-                print(f"- {jornada.id_jornada}: {jornada.descripcion}", end=" ")
-                success, message = migrar_jornada(db_source, db_target, jornada.id_jornada)
-                print(f"{OK} {message}" if success else f"{ERROR} {message}")
-    finally:
-        enable_triggers(db_target)
+    # db_source = open_source_database()
+    # db_target = open_target_database()
+    # print(f"Actualizando jornadas desde {fecha} (hace {num_dias} dias)")
+    # disable_triggers(db_target)
+    # try:
+        # with db_session():
+            # for jornada in select(_ for _ in db_source.Jornada if _.fecha >= fecha):
+                # print(f"- {jornada.id_jornada}: {jornada.descripcion}", end=" ")
+                # success, message = migrar_jornada(db_source, db_target, jornada.id_jornada)
+                # print(f"{OK} {message}" if success else f"{ERROR} {message}")
+    # finally:
+        # enable_triggers(db_target)
+    # Using dba
+    db_source = dba.get_database_connection('DB_SOURCE')
+    db_target = dba.get_database_connection('DB_TARGET')
+    print(f"Actualizando tareas desde {fecha} (hace {num_dias} días)")
+    print("Obtener tareas")
+
+    query = 'f_creacion > :1 OR f_ultima_act > :1'
+    sql = f"Select {Tarea._primary_key} as pk from {Tarea._table_name} WHERE {query}"
+    print(sql, fecha)
+    ids_tareas = dba.get_rows(db_source, sql, fecha, cast=lambda row: row['pk'])
+    print(len(ids_tareas))
+    for id_tarea in ids_tareas:
+        migrar_tarea(db_source, db_target, id_tarea)
+
+
 
 
 if __name__ == "__main__":
