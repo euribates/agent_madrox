@@ -70,8 +70,6 @@ def get_database_connection(dsn):
 def execute(dbc, sql, *args, using='default'):
     sql = str(sql)
     parameters = list(*args)
-    from icecream import ic; ic(sql)
-    from icecream import ic; ic(parameters)
     result = None
     with dbc.cursor() as cur:
         result = cur.execute(sql, parameters)

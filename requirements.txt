@@ -1,4 +1,3 @@
-pony
 prettyconf
 psycopg2
 pytest
