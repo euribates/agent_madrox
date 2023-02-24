@@ -8,6 +8,7 @@ import dba
 
 
 logger = logging.getLogger(__name__)
+# logger.setLevel(logging.DEBUG)
 
 
 def as_tsmod(dt):
@@ -31,6 +32,11 @@ class Model:
 
     @classmethod
     def from_dict(cls, dict_data):
+        _fields = set(cls.field_names())
+        _keys = list(dict_data.keys())
+        for name in _keys:
+            if name not in _fields:
+                dict_data.pop(name)
         return cls(**dict_data)
 
     @classmethod
@@ -74,36 +80,44 @@ class Model:
         assert isinstance(lines, list)
         sql = '\n'.join(lines)
         assert isinstance(sql, str)
+        logger.info(sql, _values)
         return dba.execute(dbc, sql, _values)
 
     @classmethod
     def migrar(cls, db_source, db_target, primary_key):
+        logger.info(f'Migrar {cls.__name__} :: {primary_key}')
         source_item = cls.load_instance(db_source, primary_key)
         if not source_item:
             return False, f"Unable to load {cls.__name__} [{cls._table_name}] {primary_key}"
 
-        # Migrar Dependecias
+        logger.info(f'Migrar Dependecias de {cls.__name__}')
         for field_name in cls._depends_on:
             if hasattr(source_item, field_name):
                 Model = cls._depends_on[field_name]
                 foreign_key = getattr(source_item, field_name)
                 Model.migrar(db_source, db_target, foreign_key)
 
-        # Migrar registro
+        logger.info(f'Migrar registro {primary_key}')
         target_item = cls.load_instance(db_target, primary_key)
+        logger.info(f' - target_item {target_item}')
         if not target_item:  # Insert
             values = cls.to_dict(source_item)
             cls.insert(db_target, values)
             logger.info(f"- Insert {cls.__name__} {primary_key}")
             return True, 'Inserted'
+
+        logger.info(' - Maybe needs update?')
         exclude = {cls._primary_key}
         new_values = cls.to_dict(source_item, exclude=exclude)
         old_values = cls.to_dict(target_item, exclude=exclude)
         if new_values != old_values:  # Update
+            logger.info(' - Yes, update.')
             diff_values = {}
             for name in old_values:
+                logger.info(f'{name} { new_values[name]} <-> {old_values[name]}')
                 if new_values[name] != old_values[name]:
                     diff_values[name] = new_values[name]
+            logger.info(f'diff_values: {diff_values!r}')
             cls.update(db_target, primary_key, diff_values)
             logger.info(f"- Update {cls.__name__} {primary_key}")
             return True, 'Updated'
@@ -132,6 +146,8 @@ class Proyecto(Model):
         return dba.get_rows(dbc, sql, fecha, cast=lambda row: row['pk'])
 
 
+
+
 @dataclasses.dataclass
 class Tarea(Model):
     _table_name = "Tareas.Tarea"
@@ -153,7 +169,6 @@ class Tarea(Model):
     id_usr_asignado: int
     id_servicio: int
     f_visualizacion: date
-    resolucion: str
     f_cierre: date
     estimacion: str
     id_proyecto: int
@@ -164,6 +179,31 @@ class Tarea(Model):
         query = 'f_creacion > :1 OR f_ultima_act > :1'
         sql = f"Select {cls._primary_key} as pk from {cls._table_name} WHERE {query}"
         return dba.get_rows(dbc, sql, fecha, cast=lambda row: row['pk'])
+
+
+@dataclasses.dataclass
+class Nota(Model):
+    _table_name = "Tareas.Nota"
+    _primary_key = 'id_nota'
+    _depends_on = {
+    }
+
+    id_nota: int
+    id_tarea: int
+    numero: int
+    autor: int
+    texto: str
+    notificar: str
+    fecha: datetime
+    f_creacion: datetime
+
+    @classmethod
+    def since(cls, dbc, num_days):
+        fecha = date.today() - timedelta(days=num_days)
+        query = 'f_creacion > :1 OR fecha > :1'
+        sql = f"Select {cls._primary_key} as pk from {cls._table_name} WHERE {query}"
+        return dba.get_rows(dbc, sql, fecha, cast=lambda row: row['pk'])
+
 
 
 @dataclasses.dataclass
