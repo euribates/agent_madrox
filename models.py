@@ -378,3 +378,49 @@ class Asunto(Model):
     ts_mod: str
     migrable: str
     extracto2: str
+
+
+@dataclasses.dataclass
+class Usuario(Model):
+    _table_name = "Comun.Usuario"
+    _primary_key = 'id_usuario'
+    _depends_on = {}
+
+    id_usuario: int
+    id_servicio: int
+    login: str
+    nombre: str
+    apellido1: str
+    apellido2: str
+    clase: str
+    id_portafirma: int
+    id_agora: str
+    email: str
+    f_alta: datetime.date
+    f_baja: datetime.date
+    f_mod: datetime.date
+    grupo_nt: str
+    telefono_contacto: str
+    sms: str
+    nif: str
+    pwd_shadow: str
+    movil: str
+    notificar_reuniones: str
+    notificar_bop: str
+    notificar_ds: str
+    notificar_dsc: str
+    notificar_dsdp: str
+    seudonimo: str
+    twitter: str
+    id_sap: int
+    id_mhp: str
+    extra: str
+    pwd_inicial: str
+
+    @classmethod
+    def since(cls, dbc, num_days):
+        fecha = date.today() - timedelta(days=num_days)
+        query = 'f_mod > :1 OR f_alta > :1'
+        sql = f"Select {cls._primary_key} as pk from {cls._table_name} WHERE {query}"
+        return dba.get_rows(dbc, sql, fecha, cast=lambda row: row['pk'])
+
