@@ -256,8 +256,8 @@ class Organo:
     alias: str
     nombre: str
     direccion: str
-    constitucion: datetime.date
-    disolucion: datetime.date
+    constitucion: date
+    disolucion: date
     cp: str
     fax: str
     id_isla: int
@@ -381,10 +381,42 @@ class Asunto(Model):
 
 
 @dataclasses.dataclass
+class Aplicacion(Model):
+    _table_name = "Comun.Aplicacion"
+    _primary_key = 'id_aplicacion'
+    _depends_on = {}
+
+    id_aplicacion: int
+    nombre: str
+    url: str
+    descripcion: str
+    alta: datetime
+    icono: str
+    codigo: str
+
+
+@dataclasses.dataclass
+class Acceso(Model):
+    _table_name = "Comun.Acceso"
+    _primary_key = 'id_acceso'
+    _depends_on = {
+        'id_aplicacion': Aplicacion,
+        }
+
+    id_acceso: int
+    id_aplicacion: int
+    id_usuario: int
+    orden: int
+    alta: datetime
+
+
+@dataclasses.dataclass
 class Usuario(Model):
     _table_name = "Comun.Usuario"
     _primary_key = 'id_usuario'
-    _depends_on = {}
+    _depends_on = {
+        'id_usuario': Acceso,
+        }
 
     id_usuario: int
     id_servicio: int
@@ -396,9 +428,9 @@ class Usuario(Model):
     id_portafirma: int
     id_agora: str
     email: str
-    f_alta: datetime.date
-    f_baja: datetime.date
-    f_mod: datetime.date
+    f_alta: date
+    f_baja: date
+    f_mod: date
     grupo_nt: str
     telefono_contacto: str
     sms: str

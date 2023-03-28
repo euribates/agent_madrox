@@ -42,7 +42,6 @@ def connection_params_from_db_url(conn_string):
 def get_oracle_connection(db_name, user, password):
     import cx_Oracle
     connection_string = f'{user}/{password}@{db_name}'
-    print(f"connection_string: {connection_string}")
     db_connection = cx_Oracle.connect(
         connection_string,
         encoding="UTF-8",
@@ -56,7 +55,6 @@ def get_database_connection(dsn):
     db_connection_url = config(dsn)
     connection_parameters = connection_params_from_db_url(db_connection_url)
     schema = connection_parameters['schema']
-    print(f"schema: {schema}")
     match schema:
         case 'oracle':
             db_name = connection_parameters['name']

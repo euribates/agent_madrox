@@ -1,3 +1,4 @@
 prettyconf
 psycopg2
 pytest
+typer

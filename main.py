@@ -3,48 +3,62 @@
 
 import sys
 
+import typer
+
 import dba
 from models import Tarea, Jornada, Nota
 from models import Usuario
 from clitools import ERROR, OK
 
+app = typer.Typer()
 
-def main():
-    argc = len(sys.argv)
-    num_dias = int(sys.argv[1]) if argc > 1 else 1
+
+@app.command()
+def jornadas(num_days: int=7):
     db_source = dba.get_database_connection('DB_SOURCE')
     db_target = dba.get_database_connection('DB_TARGET')
 
-    print(f"Actualizando jornadas desde hace {num_dias} días")
-    for id_jornada in Jornada.since(db_source, num_dias):
-        print(f"- Migrando Jornada {id_jornada}", end=" ")
+    print(f"Actualizando jornadas desde hace {num_days} días")
+    for id_jornada in Jornada.since(db_source, num_days):
         success, message = Jornada.migrar(db_source, db_target, id_jornada)
+        if success and message == 'Skipped':
+            continue
+        print(f"- Migrando Jornada {id_jornada}", end=" ")
         print(f"{OK} {message}" if success else f"{ERROR} {message}")
 
-    # print(f"Actualizando tareas.nota desde hace {num_dias} días")
-    # dba.execute(db_target, 'alter trigger tareas.ON_UPDATE_NOTA disable')
-    # dba.execute(db_target, 'alter trigger tareas.ON_INSERT_NOTA disable')
-    # for id_nota in Nota.since(db_source, num_dias):
-        # print(f"- Migrando nota {id_nota}", end=" ")
-        # success, message = Nota.migrar(db_source, db_target, id_nota)
-        # print(f"{OK} {message}" if success else f"{ERROR} {message}")
-    # dba.execute(db_target, 'alter trigger tareas.ON_UPDATE_NOTA enable')
-    # dba.execute(db_target, 'alter trigger tareas.ON_INSERT_NOTA enable')
 
-    print(f"Actualizando tareas.tarea desde hace {num_dias} días")
-    for id_tarea in Tarea.since(db_source, num_dias):
-        print(f"- Migrando tarea {id_tarea}", end=" ")
+@app.command()
+def tareas(num_days: int=7):
+    db_source = dba.get_database_connection('DB_SOURCE')
+    db_target = dba.get_database_connection('DB_TARGET')
+    print(f"Actualizando tareas.tarea desde hace {num_days} días")
+    for id_tarea in Tarea.since(db_source, num_days):
         success, message = Tarea.migrar(db_source, db_target, id_tarea)
+        if success and message == 'Skipped':
+            continue
+        print(f"- Migrando tarea {id_tarea}", end=" ")
         print(f"{OK} {message}" if success else f"{ERROR} {message}")
 
 
-    print(f"Actualizando usuarios desde hace {num_dias} días")
-    for id_usuario in Usuario.since(db_source, num_dias):
-        print(f"- Migrando usuario {id_usuario}", end=" ")
+@app.command()
+def usuarios(num_days: int=7):
+    db_source = dba.get_database_connection('DB_SOURCE')
+    db_target = dba.get_database_connection('DB_TARGET')
+    print(f"Actualizando usuarios desde hace {num_days} días")
+    for id_usuario in Usuario.since(db_source, num_days):
         success, message = Usuario.migrar(db_source, db_target, id_usuario)
+        if success and message == 'Skipped':
+            continue
+        print(f"- Migrando usuario {id_usuario}", end=" ")
         print(f"{OK} {message}" if success else f"{ERROR} {message}")
 
+
+@app.command()
+def all(num_days: int=7):
+    jornadas(num_days)
+    tareas(num_days)
+    usuarios(num_days)
 
 
 if __name__ == "__main__":
-    main()
+    app()
