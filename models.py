@@ -1,6 +1,8 @@
 #!/usr/bin/env python3
 
-from datetime import date, datetime, timedelta
+from datetime import date as Date
+from datetime import datetime as DateTime
+from datetime import timedelta as TimeDelta
 import dataclasses
 import logging
 
@@ -40,10 +42,10 @@ class Model:
         return cls(**dict_data)
 
     @classmethod
-    def load_instance(cls, db, pk):
+    def load_instances(cls, db, pk):
         query = f'{cls._primary_key} = :1'
         sql = f'Select * from {cls._table_name} WHERE {query}'
-        return dba.get_row(db, sql, pk, cast=cls.from_dict)
+        return dba.get_rows(db, sql, pk, cast=cls.from_dict)
 
     @classmethod
     def field_names(cls):
@@ -80,49 +82,51 @@ class Model:
         assert isinstance(lines, list)
         sql = '\n'.join(lines)
         assert isinstance(sql, str)
-        logger.info(sql, _values)
+        logger.info(f'sql: {sql} valuesL {_values}')
         return dba.execute(dbc, sql, _values)
 
     @classmethod
     def migrar(cls, db_source, db_target, primary_key):
         logger.info(f'Migrar {cls.__name__} :: {primary_key}')
-        source_item = cls.load_instance(db_source, primary_key)
-        if not source_item:
+        source_items = cls.load_instances(db_source, primary_key)
+        if not source_items:
             return False, f"Unable to load {cls.__name__} [{cls._table_name}] {primary_key}"
+        for source_item in source_items:
+            logger.info(f'Migrar Dependecias de {cls.__name__}')
+            for field_name in cls._depends_on:
+                if hasattr(source_item, field_name):
+                    Model = cls._depends_on[field_name]
+                    foreign_key = getattr(source_item, field_name)
+                    for _,_ in Model.migrar(db_source, db_target, foreign_key):
+                        pass
 
-        logger.info(f'Migrar Dependecias de {cls.__name__}')
-        for field_name in cls._depends_on:
-            if hasattr(source_item, field_name):
-                Model = cls._depends_on[field_name]
-                foreign_key = getattr(source_item, field_name)
-                Model.migrar(db_source, db_target, foreign_key)
-
-        logger.info(f'Migrar registro {primary_key}')
-        target_item = cls.load_instance(db_target, primary_key)
-        logger.info(f' - target_item {target_item}')
-        if not target_item:  # Insert
-            values = cls.to_dict(source_item)
-            cls.insert(db_target, values)
-            logger.info(f"- Insert {cls.__name__} {primary_key}")
-            return True, 'Inserted'
-
-        logger.info(' - Maybe needs update?')
-        exclude = {cls._primary_key}
-        new_values = cls.to_dict(source_item, exclude=exclude)
-        old_values = cls.to_dict(target_item, exclude=exclude)
-        if new_values != old_values:  # Update
-            logger.info(' - Yes, update.')
-            diff_values = {}
-            for name in old_values:
-                logger.info(f'{name} { new_values[name]} <-> {old_values[name]}')
-                if new_values[name] != old_values[name]:
-                    diff_values[name] = new_values[name]
-            logger.info(f'diff_values: {diff_values!r}')
-            cls.update(db_target, primary_key, diff_values)
-            logger.info(f"- Update {cls.__name__} {primary_key}")
-            return True, 'Updated'
-        logging.info(f"- Skipped {cls.__name__} {primary_key}")
-        return True, 'Skipped'
+            logger.info(f'Migrar registro {primary_key}')
+            for target_item in cls.load_instances(db_target, primary_key):
+                logger.info(f' - target_item {target_item}')
+                if not target_item:  # Insert
+                    values = cls.to_dict(source_item)
+                    cls.insert(db_target, values)
+                    logger.info(f"- Insert {cls.__name__} {primary_key}")
+                    yield True, 'Inserted'
+                    continue
+                logger.info(' - Maybe needs update?')
+                exclude = {cls._primary_key}
+                new_values = cls.to_dict(source_item, exclude=exclude)
+                old_values = cls.to_dict(target_item, exclude=exclude)
+                if new_values != old_values:  # Update
+                    logger.info(' - Yes, update.')
+                    diff_values = {}
+                    for name in old_values:
+                        logger.info(f'{name} { new_values[name]} <-> {old_values[name]}')
+                        if new_values[name] != old_values[name]:
+                            diff_values[name] = new_values[name]
+                    logger.info(f'diff_values: {diff_values!r}')
+                    cls.update(db_target, primary_key, diff_values)
+                    logger.info(f"- Update {cls.__name__} {primary_key}")
+                    yield True, 'Updated'
+                    continue
+                logging.info(f"- Skipped {cls.__name__} {primary_key}")
+                yield True, 'Skipped'
 
 
 @dataclasses.dataclass
@@ -134,13 +138,13 @@ class Proyecto(Model):
     id_proyecto: int
     nombre: str
     descripcion: str
-    f_creacion: datetime
-    f_cierre: datetime
+    f_creacion: DateTime
+    f_cierre: DateTime
     status: str
 
     @classmethod
     def since(cls, dbc, num_days):
-        fecha = date.today() - timedelta(days=num_days)
+        fecha = Date.today() - TimeDelta(days=num_days)
         query = 'f_creacion > :1 OR f_cierre > :1'
         sql = f"Select {cls._primary_key} as pk from {cls._table_name} WHERE {query}"
         return dba.get_rows(dbc, sql, fecha, cast=lambda row: row['pk'])
@@ -162,20 +166,20 @@ class Tarea(Model):
     prioridad: str
     estado: str
     progreso: int
-    f_creacion: date
-    f_ultima_act: date
+    f_creacion: Date
+    f_ultima_act: Date
     id_usr_solicitante: int
     id_usr_creador: int
     id_usr_asignado: int
     id_servicio: int
-    f_visualizacion: date
-    f_cierre: date
+    f_visualizacion: Date
+    f_cierre: Date
     estimacion: str
     id_proyecto: int
 
     @classmethod
     def since(cls, dbc, num_days):
-        fecha = date.today() - timedelta(days=num_days)
+        fecha = Date.today() - TimeDelta(days=num_days)
         query = 'f_creacion > :1 OR f_ultima_act > :1'
         sql = f"Select {cls._primary_key} as pk from {cls._table_name} WHERE {query}"
         return dba.get_rows(dbc, sql, fecha, cast=lambda row: row['pk'])
@@ -186,7 +190,9 @@ class Nota(Model):
     _table_name = "Tareas.Nota"
     _primary_key = 'id_nota'
     _depends_on = {
+        Tarea,
     }
+
 
     id_nota: int
     id_tarea: int
@@ -194,12 +200,12 @@ class Nota(Model):
     autor: int
     texto: str
     notificar: str
-    fecha: datetime
-    f_creacion: datetime
+    fecha: Date
+    f_creacion: Date
 
     @classmethod
     def since(cls, dbc, num_days):
-        fecha = date.today() - timedelta(days=num_days)
+        fecha = Date.today() - TimeDelta(days=num_days)
         query = 'f_creacion > :1 OR fecha > :1'
         sql = f"Select {cls._primary_key} as pk from {cls._table_name} WHERE {query}"
         return dba.get_rows(dbc, sql, fecha, cast=lambda row: row['pk'])
@@ -219,7 +225,7 @@ class Isla(Model):
 
     @classmethod
     def since(cls, dbc, num_days):
-        fecha = date.today() - timedelta(days=num_days)
+        fecha = Date.today() - TimeDelta(days=num_days)
         ts_mod = as_tsmod(fecha)
         query = 'ts_mod > :1'
         sql = f"Select {cls._primary_key} as pk from {cls._table_name} WHERE {query}"
@@ -244,7 +250,7 @@ class Sala(Model):
 
 
 @dataclasses.dataclass
-class Organo:
+class Organo(Model):
     _table_name = "AGORA.ORGANO"
     _primary_key = 'id_organo'
     _depends_on = {
@@ -256,8 +262,8 @@ class Organo:
     alias: str
     nombre: str
     direccion: str
-    constitucion: date
-    disolucion: date
+    constitucion: Date
+    disolucion: Date
     cp: str
     fax: str
     id_isla: int
@@ -289,7 +295,7 @@ class Jornada(Model):
     n_grabaciones: int
     id_sesion: str
     id_organo: str
-    fecha: date
+    fecha: Date
     hora: str
     descripcion: str
     texto: str
@@ -305,10 +311,24 @@ class Jornada(Model):
 
     @classmethod
     def since(cls, dbc, num_days):
-        fecha = date.today() - timedelta(days=num_days)
+        fecha = Date.today() - TimeDelta(days=num_days)
         query = 'fecha > :1'
         sql = f"Select {cls._primary_key} as pk from {cls._table_name} WHERE {query}"
         return dba.get_rows(dbc, sql, fecha, cast=lambda row: row['pk'])
+
+
+@dataclasses.dataclass
+class SesionDatos(Model):
+    _table_name = "AGORA.Sesion_Datos"
+    _primary_key = 'id_sesion'
+    _depends_on = {}
+
+    id_sesion: str
+    convocada: str
+    f_convocada: Date
+    f_desconvocada: Date
+    id_usuario: int
+    confirmada: str
 
 
 @dataclasses.dataclass
@@ -317,11 +337,12 @@ class Sesion(Model):
     _primary_key = 'id_sesion'
     _depends_on = {
         'id_organo': Organo,
+        'id_sesion': SesionDatos,
         }
 
     id_sesion: str
     id_organo: str
-    fecha: date
+    fecha: Date
     hora: str
     legislatura: int
     n_sesion: int
@@ -334,22 +355,6 @@ class Sesion(Model):
     id_usuario: str
     n_dias: int
     migrable: str
-
-
-@dataclasses.dataclass
-class SesionDatos(Model):
-    _table_name = "AGORA.Sesion_Datos"
-    _primery_key = 'id_sesion'
-    _depends_on = {
-        'id_sesion': Sesion
-        }
-
-    id_sesion: str
-    convocada: str
-    f_convocada: date
-    f_desconvocada: date
-    id_usuario: int
-    confirmada: str
 
 
 @dataclasses.dataclass
@@ -390,7 +395,7 @@ class Aplicacion(Model):
     nombre: str
     url: str
     descripcion: str
-    alta: datetime
+    alta: DateTime
     icono: str
     codigo: str
 
@@ -407,7 +412,7 @@ class Acceso(Model):
     id_aplicacion: int
     id_usuario: int
     orden: int
-    alta: datetime
+    alta: DateTime
 
 
 @dataclasses.dataclass
@@ -428,9 +433,9 @@ class Usuario(Model):
     id_portafirma: int
     id_agora: str
     email: str
-    f_alta: date
-    f_baja: date
-    f_mod: date
+    f_alta: Date
+    f_baja: Date
+    f_mod: Date
     grupo_nt: str
     telefono_contacto: str
     sms: str
@@ -451,8 +456,53 @@ class Usuario(Model):
 
     @classmethod
     def since(cls, dbc, num_days):
-        fecha = date.today() - timedelta(days=num_days)
+        fecha = Date.today() - TimeDelta(days=num_days)
         query = 'f_mod > :1 OR f_alta > :1'
         sql = f"Select {cls._primary_key} as pk from {cls._table_name} WHERE {query}"
         return dba.get_rows(dbc, sql, fecha, cast=lambda row: row['pk'])
 
+
+@dataclasses.dataclass
+class NoticiaChunk(Model):
+
+    _table_name = "Noticias.Noticia_Chunk"
+    _primary_key = ('uuid')
+    _depends_on = {}
+
+    uuid: str
+    ordering: int
+    text: str
+
+
+@dataclasses.dataclass
+class Noticia(Model):
+
+    _table_name = "Noticias.Noticia"
+    _primary_key = 'id_noticia'
+    _depends_on = {
+        'uuid': NoticiaChunk,
+        }
+
+    id_noticia: int
+    titulo: str
+    url: str
+    entradilla: str
+    id_servicio: int
+    intranet: str
+    internet: str
+    portal_diputado: str
+    texto: str
+    f_alta: Date
+    f_baja: Date
+    f_pub: Date
+    prioritaria: str
+    uuid: str
+    destacada: str
+    streaming_url: str
+
+    @classmethod
+    def since(cls, dbc, num_days):
+        fecha = Date.today() - TimeDelta(days=num_days)
+        query = 'f_alta >= :1'
+        sql = f"Select {cls._primary_key} as pk from {cls._table_name} WHERE {query}"
+        return [row['pk'] for row in dba.get_rows(dbc, sql, fecha)]

@@ -96,6 +96,7 @@ def get_rows(dbc, sql, *args, cast=None):
     parameters = list(args)
     with dbc.cursor() as cur:
         cur.execute(sql, parameters)
+
         field_names = [desc[0].lower() for desc in cur.description]
         rows = cur.fetchall()
         if rows:
@@ -136,7 +137,7 @@ def next_val(sequence_name, conn="default"):
     el contador de forma atómica.
     '''
 
-    db_conn = _get_database_connection(conn)
+    db_conn = get_database_connection(conn)
     if es_oracle(db_conn):
         sql = "SELECT {}.NextVal FROM Dual".format(sequence_name)
     else:  # Será postgres
