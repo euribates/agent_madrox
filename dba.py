@@ -107,10 +107,10 @@ def get_rows(dbc, sql, *args, cast=None):
     return []
 
 
-def get_scalar(sql, using='default', cast=None, default=None):
+def get_scalar(dbc, sql, cast=None, default=None):
     """Obtener un único valor desde la base de datos.
     """
-    row = get_row(sql, using=using, cast=cast)
+    row = get_row(dbc, sql, cast=cast)
     result = list(row.values())[0] if row else default
     return result
 

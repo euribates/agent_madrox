@@ -124,6 +124,39 @@ def all(num_days: int = 7):
     noticias(num_days)
 
 
+def has_equal_num_of_rows(db_source, db_target, table, query=''):
+    sql = f'SELECT count(*)\n  FROM {table}'
+    if query:
+        sql = f'{sql}\n WHERE {query}'
+    num_source = dba.get_scalar(db_source, sql)
+    num_target = dba.get_scalar(db_target, sql)
+    if num_source == num_target:
+        return True, ''
+    else:
+        return False, f'Hay {num_source} registros en origen pero {num_target} en destino'
+
+
+def check_actas(db_source, db_target, eleccion):
+    table = 'Elecciones.Actas'
+    query = f'eleccion = {eleccion}'
+    print(f'- {table} {eleccion}', end=' ')
+    is_ok, error_message = has_equal_num_of_rows(db_source, db_target, table, query)
+    print(f'{OK}' if is_ok else f'{ERROR} {error_message}')
+
+
+@app.command()
+def check():
+    db_source = dba.get_database_connection('DB_SOURCE')
+    db_target = dba.get_database_connection('DB_TARGET')
+    elecciones = [2003, 2007, 2011, 2015, 2019, 2023]
+    print('Checking elecciones...')
+    for eleccion in elecciones:
+        check_actas(db_source, db_target, eleccion)
+
+
+
 if __name__ == "__main__":
     logging.basicConfig(filename='madrox.log', level='DEBUG')
+    logger = logging.getLogger('models')
+    logger.setLevel(logging.DEBUG)
     app()

@@ -10,7 +10,6 @@ import dba
 
 
 logger = logging.getLogger(__name__)
-# logger.setLevel(logging.DEBUG)
 
 
 def as_tsmod(dt):
@@ -63,6 +62,7 @@ class Model:
             f"    {as_list(_placeholders)}"
             ")",
             ])
+        logger.debug(sql, _values)
         return dba.execute(dbc, sql, _values)
 
     @classmethod
@@ -100,33 +100,33 @@ class Model:
                     for _,_ in Model.migrar(db_source, db_target, foreign_key):
                         pass
 
-            logger.info(f'Migrar registro {primary_key}')
-            for target_item in cls.load_instances(db_target, primary_key):
-                logger.info(f' - target_item {target_item}')
-                if not target_item:  # Insert
-                    values = cls.to_dict(source_item)
-                    cls.insert(db_target, values)
-                    logger.info(f"- Insert {cls.__name__} {primary_key}")
-                    yield True, 'Inserted'
-                    continue
-                logger.info(' - Maybe needs update?')
-                exclude = {cls._primary_key}
-                new_values = cls.to_dict(source_item, exclude=exclude)
-                old_values = cls.to_dict(target_item, exclude=exclude)
-                if new_values != old_values:  # Update
-                    logger.info(' - Yes, update.')
-                    diff_values = {}
-                    for name in old_values:
-                        logger.info(f'{name} { new_values[name]} <-> {old_values[name]}')
-                        if new_values[name] != old_values[name]:
-                            diff_values[name] = new_values[name]
-                    logger.info(f'diff_values: {diff_values!r}')
-                    cls.update(db_target, primary_key, diff_values)
-                    logger.info(f"- Update {cls.__name__} {primary_key}")
-                    yield True, 'Updated'
-                    continue
-                logging.info(f"- Skipped {cls.__name__} {primary_key}")
-                yield True, 'Skipped'
+            logger.info(f'Migrar registro {cls.__name__} {primary_key}')
+            targets = list(cls.load_instances(db_target, primary_key))
+            if targets:
+                for target_item in targets:
+                    logger.info(f' - target_item {target_item}. Maybe needs update?')
+                    exclude = {cls._primary_key}
+                    new_values = cls.to_dict(source_item, exclude=exclude)
+                    old_values = cls.to_dict(target_item, exclude=exclude)
+                    if new_values != old_values:  # Update
+                        logger.info(' - Yes, update.')
+                        diff_values = {}
+                        for name in old_values:
+                            logger.info(f'{name} { new_values[name]} <-> {old_values[name]}')
+                            if new_values[name] != old_values[name]:
+                                diff_values[name] = new_values[name]
+                        logger.info(f'diff_values: {diff_values!r}')
+                        cls.update(db_target, primary_key, diff_values)
+                        logger.info(f"- Update {cls.__name__} {primary_key}")
+                        yield True, 'Updated'
+                        continue
+                    logging.info(f"- No, Skipped {cls.__name__} {primary_key}")
+                    yield True, 'Skipped'
+            else:  # Insert
+                values = cls.to_dict(source_item)
+                cls.insert(db_target, values)
+                logger.info(f"- Insert {cls.__name__} {primary_key}")
+                yield True, 'Inserted'
 
 
 @dataclasses.dataclass
@@ -148,8 +148,6 @@ class Proyecto(Model):
         query = 'f_creacion > :1 OR f_cierre > :1'
         sql = f"Select {cls._primary_key} as pk from {cls._table_name} WHERE {query}"
         return dba.get_rows(dbc, sql, fecha, cast=lambda row: row['pk'])
-
-
 
 
 @dataclasses.dataclass
@@ -463,25 +461,11 @@ class Usuario(Model):
 
 
 @dataclasses.dataclass
-class NoticiaChunk(Model):
-
-    _table_name = "Noticias.Noticia_Chunk"
-    _primary_key = ('uuid')
-    _depends_on = {}
-
-    uuid: str
-    ordering: int
-    text: str
-
-
-@dataclasses.dataclass
 class Noticia(Model):
 
     _table_name = "Noticias.Noticia"
     _primary_key = 'id_noticia'
-    _depends_on = {
-        'uuid': NoticiaChunk,
-        }
+    _depends_on = {}
 
     id_noticia: int
     titulo: str
@@ -506,3 +490,16 @@ class Noticia(Model):
         query = 'f_alta >= :1'
         sql = f"Select {cls._primary_key} as pk from {cls._table_name} WHERE {query}"
         return [row['pk'] for row in dba.get_rows(dbc, sql, fecha)]
+
+
+@dataclasses.dataclass
+class NoticiaChunk(Model):
+
+    _table_name = "Noticias.Noticia_Chunk"
+    _primary_key = ('uuid', 'ordering')
+    _depends_on = {'uuid': Noticia}
+
+    uuid: str
+    ordering: int
+    text: str
+
