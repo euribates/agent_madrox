@@ -472,9 +472,6 @@ class Noticia(Model):
     url: str
     entradilla: str
     id_servicio: int
-    intranet: str
-    internet: str
-    portal_diputado: str
     texto: str
     f_alta: Date
     f_baja: Date
