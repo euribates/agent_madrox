@@ -62,7 +62,8 @@ class Model:
             f"    {as_list(_placeholders)}"
             ")",
             ])
-        logger.debug(sql, _values)
+        logger.debug(str(sql))
+        logger.debug(repr(_values))
         return dba.execute(dbc, sql, _values)
 
     @classmethod
@@ -436,7 +437,6 @@ class Usuario(Model):
     f_mod: Date
     grupo_nt: str
     telefono_contacto: str
-    sms: str
     nif: str
     pwd_shadow: str
     movil: str
