@@ -1,11 +1,14 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 
-import typer
 import logging
 
+import typer
+from rich.progress import track
+
 import dba
-from models import Tarea, Jornada, Nota, Sesion, SesionDatos
+from models import Organo, Jornada, Sesion, SesionDatos
+from models import Tarea, Nota
 from models import Usuario
 from models import Noticia
 from clitools import ERROR, OK
@@ -37,47 +40,38 @@ def sesion(id_sesion):
 def jornada(id_jornada: int):
     db_source = dba.get_database_connection('DB_SOURCE')
     db_target = dba.get_database_connection('DB_TARGET')
-
-    print(f"Migrando jornada {id_jornada}", end=" ")
     for success, message in Jornada.migrar(db_source, db_target, id_jornada):
+        if success and message == 'Skipped':
+            continue
+        print(f"Migrando jornada {id_jornada}", end=" ")
         print(f"{OK} {message}" if success else f"{ERROR} {message}")
 
 
 @app.command()
 def jornadas(num_days: int = 7):
     db_source = dba.get_database_connection('DB_SOURCE')
-    db_target = dba.get_database_connection('DB_TARGET')
-
     print(f"Actualizando jornadas desde hace {num_days} días")
-    for id_jornada in Jornada.since(db_source, num_days):
-        for success, message in Jornada.migrar(db_source, db_target, id_jornada):
-            if success and message == 'Skipped':
-                continue
-            print(f"- Migrando Jornada {id_jornada}", end=" ")
-            print(f"{OK} {message}" if success else f"{ERROR} {message}")
+    for id_jornada in track(Jornada.since(db_source, num_days)):
+        jornada(id_jornada)
 
 
 @app.command()
 def tarea(id_tarea: int):
     db_source = dba.get_database_connection('DB_SOURCE')
     db_target = dba.get_database_connection('DB_TARGET')
-
-    print(f"Migrando tarea {id_tarea}", end=" ")
     for success, message in Tarea.migrar(db_source, db_target, id_tarea):
+        if success and message == 'Skipped':
+            continue
+        print(f"Migrando tarea {id_tarea}", end=" ")
         print(f"{OK} {message}" if success else f"{ERROR} {message}")
 
 
 @app.command()
 def tareas(num_days: int = 7):
     db_source = dba.get_database_connection('DB_SOURCE')
-    db_target = dba.get_database_connection('DB_TARGET')
     print(f"Actualizando tareas.tarea desde hace {num_days} días")
     for id_tarea in Tarea.since(db_source, num_days):
-        for success, message in Tarea.migrar(db_source, db_target, id_tarea):
-            if success and message == 'Skipped':
-                continue
-            print(f"- Migrando tarea {id_tarea}", end=" ")
-            print(f"{OK} {message}" if success else f"{ERROR} {message}")
+        tarea(id_tarea)
 
 
 @app.command()
@@ -94,30 +88,43 @@ def usuarios(num_days: int = 7):
 
 
 @app.command()
-def noticias(num_days: int = 7):
-    db_source = dba.get_database_connection('DB_SOURCE')
-    db_target = dba.get_database_connection('DB_TARGET')
-    print(f"Actualizando noticias desde hace {num_days} días")
-    for id_noticia in Noticia.since(db_source, num_days):
-        for success, message in Noticia.migrar(db_source, db_target, id_noticia):
-            if success and message == 'Skipped':
-                continue
-            print(f"- Migrando noticia {id_noticia}", end=" ")
-            print(f"{OK} {message}" if success else f"{ERROR} {message}")
-
-
-@app.command()
 def noticia(id_noticia: int):
     db_source = dba.get_database_connection('DB_SOURCE')
     db_target = dba.get_database_connection('DB_TARGET')
-
     print(f"Migrando noticia {id_noticia}", end=" ")
     for success, message in Noticia.migrar(db_source, db_target, id_noticia):
         print(f"{OK} {message}" if success else f"{ERROR} {message}")
 
 
 @app.command()
+def noticias(num_days: int = 7):
+    db_source = dba.get_database_connection('DB_SOURCE')
+    print(f"Actualizando noticias.Noticia desde hace {num_days} días")
+    for id_noticia in Noticia.since(db_source, num_days):
+        noticia(id_noticia)
+
+
+@app.command()
+def organo(id_organo: str):
+    db_source = dba.get_database_connection('DB_SOURCE')
+    db_target = dba.get_database_connection('DB_TARGET')
+    print(f"Migrando órgano {id_organo}", end=" ")
+    for success, message in Organo.migrar(db_source, db_target, id_organo):
+        print(f"{OK} {message}" if success else f"{ERROR} {message}")
+
+
+@app.command()
+def organos(num_days: int = 7):
+    db_source = dba.get_database_connection('DB_SOURCE')
+    print(f"Actualizando Agora.Organo desde hace {num_days} días")
+    for id_organo in Organo.since(db_source, num_days):
+        organo(id_organo)
+
+
+
+@app.command()
 def all(num_days: int = 7):
+    organos(num_days)
     jornadas(num_days)
     tareas(num_days)
     usuarios(num_days)

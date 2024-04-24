@@ -179,7 +179,7 @@ class Tarea(Model):
     @classmethod
     def since(cls, dbc, num_days):
         fecha = Date.today() - TimeDelta(days=num_days)
-        query = 'f_creacion > :1 OR f_ultima_act > :1'
+        query = 'f_ultima_act > :1'
         sql = f"Select {cls._primary_key} as pk from {cls._table_name} WHERE {query}"
         return dba.get_rows(dbc, sql, fecha, cast=lambda row: row['pk'])
 
@@ -191,7 +191,6 @@ class Nota(Model):
     _depends_on = {
         Tarea,
     }
-
 
     id_nota: int
     id_tarea: int
@@ -208,7 +207,6 @@ class Nota(Model):
         query = 'f_creacion > :1 OR fecha > :1'
         sql = f"Select {cls._primary_key} as pk from {cls._table_name} WHERE {query}"
         return dba.get_rows(dbc, sql, fecha, cast=lambda row: row['pk'])
-
 
 
 @dataclasses.dataclass
@@ -280,6 +278,14 @@ class Organo(Model):
     descripcion: str
     id_letrado: str
     nombre_completo: str
+
+    @classmethod
+    def since(cls, dbc, num_days):
+        fec = Date.today() - TimeDelta(days=num_days)
+        ts_mod = f'{fec.year:04d}{fec.month:02d}{fec.day:02d}000000'
+        query = 'ts_mod > :1'
+        sql = f"Select {cls._primary_key} as pk from {cls._table_name} WHERE {query}"
+        return dba.get_rows(dbc, sql, ts_mod, cast=lambda row: row['pk'])
 
 
 @dataclasses.dataclass

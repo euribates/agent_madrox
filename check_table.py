@@ -3,10 +3,19 @@
 
 import sys
 import argparse
+from typing import Final
 
-from clitools import ERROR, OK, green, red
+from rich.console import Console
 import dml
 import dba
+
+OK: Final[str] = '[green]✓[/green]'
+ERROR: Final[str] = '[red]✖[/red]'
+
+
+def red(msg):
+    """Devuelve el texto en color rojo (Para terminal/consola ANSI)."""
+    return f"[red]{msg}[/red]"
 
 
 def check_table_size(db_source, db_target, table_name):
@@ -55,25 +64,25 @@ def main():
     options = get_options()
     db_source = dba.get_database_connection('DB_SOURCE')
     db_target = dba.get_database_connection('DB_TARGET')
-    print(f'Comprobando {green(options.table_name)}', end=" : ")
+    console = Console()
+    console.print(f'Comprobando [green]{options.table_name}[/green]', end=" : ")
     err = check_table_size(db_source, db_target, options.table_name)
     if err:
-        print(ERROR)
-        print(red(err))
+        console.print(ERROR)
+        console.print(red(err))
         return -1
-    print(f'size {OK}', end=' ')
+    console.print(f'size {OK}', end=' ')
     if options.number:
         for field_name in options.number:
-            print(field_name, end=' ')
+            console.print(field_name, end=' ')
             err = check_table_number(db_source, db_target, options.table_name, field_name)
             if err:
-                print(ERROR)
-                print(red(err))
+                console.print(ERROR)
+                console.print(red(err))
                 return -1
-            print(OK, end=' ')
-        print()
+            console.print(OK, end=' ')
+        console.print()
     return 0
-
 
 
 if __name__ == "__main__":
