@@ -65,9 +65,9 @@ def get_database_connection(dsn):
             raise ValueError("Imposible conectarme a bases de datos de tipo {_}")
 
 
-def execute(dbc, sql, *args, using='default'):
+def execute(dbc, sql, *args):
     sql = str(sql)
-    parameters = list(*args)
+    parameters = list(args)
     result = None
     with dbc.cursor() as cur:
         result = cur.execute(sql, parameters)

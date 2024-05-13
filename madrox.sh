@@ -2,5 +2,5 @@
 
 cd $HOME/web/agent_madrox
 source $HOME/.virtualenvs/madrox/bin/activate
-python main.py $@
+python madrox.py $@
 
