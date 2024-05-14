@@ -368,13 +368,19 @@ class Sala(Model):
     f_baja: Date
     rutaimagen: str
     web: str
+    updated_at: DateTime
 
     @classmethod
     def _since(cls, dbc, num_days=DEFAULT_SINCE_DAYS):
-        sql = f'Select {cls._primary_key} as pk from {cls._table_name}'
+        fecha = DateTime.now() - TimeDelta(days=num_days)
+        sql = (
+            f'Select {cls.Meta.primary_key.name} as pk'
+            f'  from {cls.Meta.table_name}'
+            '  WHERE updated_at > :1'
+            )
         return dba.get_rows(
-            dbc, sql,
-            cast=cls.Meta.primary_ket.cast,
+            dbc, sql, fecha,
+            cast=lambda d: cls.Meta.primary_key.cast(d['pk']),
             )
 
 
@@ -564,6 +570,22 @@ class Jornada(Model):
             )
 
 
+@catalog.register
+@dataclasses.dataclass
+class Acceso(Model):
+
+    class Meta:
+        table_name = "COMUN.Acceso"
+        primary_key = PrimaryKey('id_acceso', int)
+        depends_on = {}
+        master_of = set([])
+
+    id_accesoi: int
+    id_aplicacion: int
+    id_usuario: int
+    orden: int
+    alta: DateTime
+
 
 @catalog.register
 @dataclasses.dataclass
@@ -573,7 +595,7 @@ class Aplicacion(Model):
         table_name = "Comun.Aplicacion"
         primary_key = PrimaryKey('id_aplicacion', int)
         depends_on = {}
-        master_of = set([])
+        master_of = set([Acceso])
 
     id_aplicacion: int
     nombre: str

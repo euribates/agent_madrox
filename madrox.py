@@ -31,22 +31,23 @@ class Handler:
 
     def out(self, message, **kwargs):
         level = int(kwargs.pop('level', 0))
+        verbose = bool(kwargs.pop('verbose', False))
         match message:
             case Success(value=val):
                 self.log.warning(f'Success: {val}')
-                if self.is_verbose:
+                if verbose:
                     indent = ('  ' * level) + '[green]▶[/]'
-                    self.console.print(f'{indent} [bold][yellow]{val}[/] {OK}', **kwargs)
+                    self.print(f'{indent} [bold][yellow]{val}[/] {OK}', **kwargs)
             case Failure(error_message=msg):
                 self.log.error(f'Error: {msg}')
-                if self.is_verbose:
+                if verbose:
                     indent = ('  ' * level) + '[red]▶[/]'
-                    self.console.print(f'{indent} [bold]{msg}[/] {ERROR}', **kwargs)
+                    self.print(f'{indent} [bold]{msg}[/] {ERROR}', **kwargs)
             case _:
                 self.log.info(str(message))
-                if self.is_verbose:
+                if verbose:
                     indent = ('  ' * level) + '[white]▶[/]'
-                    self.console.print(f'{indent} {message}', **kwargs)
+                    self.print(f'{indent} {message}', **kwargs)
         return message
 
     def has_equal_num_of_rows(self, model, query=''):
@@ -84,7 +85,7 @@ class Handler:
         model._insert(self.db_target, values)
         return Success('No existe. Insertado')
 
-    def migrar_modelo(self, model, primary_key, level=0):
+    def migrar_modelo(self, model, primary_key, level=0, verbose=False):
         subject = model._locator(primary_key)
         self.out(f'Migrando [bold yellow]{subject}[/]', level=level)
         instance = model._load_instance(self.db_source, primary_key)
@@ -103,17 +104,32 @@ class Handler:
                 self.migrar_modelo(submodel, value, level=level+1)
         
         # Instancia actual
-        self.out(f'Migrando instancia actual {model.__name__}[{primary_key}]')
+        self.out(
+            f'Migrando instancia actual {model.__name__}[{primary_key}]',
+            level=level,
+            verbose=verbose,
+            )
         target = model._load_instance(self.db_target, primary_key)
         if target:  # Ya existe. Update
-            self.out(self._do_update(model, instance, target), level=level)
+            self.out(
+                self._do_update(model, instance, target),
+                level=level,
+                verbose=verbose,
+                )
         else:  # Insert
-            self.out(self._do_insert(model, instance), level=level)
+            self.out(
+                self._do_insert(model, instance),
+                level=level,
+                verbose=verbose,
+                )
         
         # modelos subordinados
         for submodel in model.Meta.master_of:
             submodel_name = submodel.__name__
-            self.out(f'Migrando Entidad subordinada {submodel_name}')
+            self.out(
+                f'Migrando Entidad subordinada {submodel_name}',
+                verbose=verbose,
+                )
             masons = submodel._load_instances(
                 self.db_source,
                 model.Meta.primary_key.name,
@@ -170,7 +186,7 @@ class Handler:
     def run(self):
         parser = self.get_parser()
         options = parser.parse_args()
-        self.is_verbose = options.verbose
+        self.verbose = options.verbose
         self.is_muted = options.muted
         return options.func(options)
 
@@ -183,13 +199,14 @@ class Handler:
         return 0
 
     def cmd_migrate(self, options):
-        self.num_days = options.num_days
+        verbose = options.verbose
         models = options.model
         if len(models) == 1 and models[0] == 'all':
             models = list(catalog.keys())
         self.out(
             'Migrando registros creados o modificados'
-            f' en los ultimos {self.num_days} días.'
+            f' en los ultimos {options.num_days} días.',
+            verbose=verbose,
             )
         tasks = {}
         with Progress() as progress:
@@ -197,13 +214,12 @@ class Handler:
                 model = catalog[model_name]
                 if not model._is_migrable():
                     continue
-                primary_keys = list(model._since(self.db_source, num_days=self.num_days))
+                primary_keys = list(model._since(self.db_source, num_days=options.num_days))
                 total = len(primary_keys)
                 tasks[model_name] = progress.add_task(
                     description=f'{model_name} 0/{total}',
                     total=len(primary_keys),
                     )
-
                 for counter, pk in enumerate(primary_keys, start=1):
                     self.migrar_modelo(model, pk, level=0)
                     progress.update(
