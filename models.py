@@ -580,7 +580,7 @@ class Acceso(Model):
         depends_on = {}
         master_of = set([])
 
-    id_accesoi: int
+    id_acceso: int
     id_aplicacion: int
     id_usuario: int
     orden: int
