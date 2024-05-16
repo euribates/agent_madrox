@@ -31,23 +31,19 @@ class Handler:
 
     def out(self, message, **kwargs):
         level = int(kwargs.pop('level', 0))
-        verbose = bool(kwargs.pop('verbose', False))
         match message:
             case Success(value=val):
                 self.log.warning(f'Success: {val}')
-                if verbose:
-                    indent = ('  ' * level) + '[green]▶[/]'
-                    self.print(f'{indent} [bold][yellow]{val}[/] {OK}', **kwargs)
+                indent = ('  ' * level) + '[green]▶[/]'
+                self.print(f'{indent} [bold][yellow]{val}[/] {OK}', **kwargs)
             case Failure(error_message=msg):
                 self.log.error(f'Error: {msg}')
-                if verbose:
-                    indent = ('  ' * level) + '[red]▶[/]'
-                    self.print(f'{indent} [bold]{msg}[/] {ERROR}', **kwargs)
+                indent = ('  ' * level) + '[red]▶[/]'
+                self.print(f'{indent} [bold]{msg}[/] {ERROR}', **kwargs)
             case _:
                 self.log.info(str(message))
-                if verbose:
-                    indent = ('  ' * level) + '[white]▶[/]'
-                    self.print(f'{indent} {message}', **kwargs)
+                indent = ('  ' * level) + '[white]▶[/]'
+                self.print(f'{indent} {message}', **kwargs)
         return message
 
     def has_equal_num_of_rows(self, model, query=''):
@@ -74,7 +70,8 @@ class Handler:
                 old_value = old_values[name]
                 new_value = new_values[name]
                 if new_value != old_value:
-                    self.out(f'{name} {new_value} != {old_value}')
+                    if self.is_verbose:
+                        self.out(f'{name} {new_value} != {old_value}')
                     diff_values[name] = new_values[name]
             model._update(self.db_target, primary_key, diff_values)
             return Success('Ya existe. Actualizado')
@@ -85,9 +82,10 @@ class Handler:
         model._insert(self.db_target, values)
         return Success('No existe. Insertado')
 
-    def migrar_modelo(self, model, primary_key, level=0, verbose=False):
+    def migrar_modelo(self, model, primary_key, level=0):
         subject = model._locator(primary_key)
-        self.out(f'Migrando [bold yellow]{subject}[/]', level=level)
+        if self.is_verbose:
+            self.out(f'Migrando [bold yellow]{subject}[/]', level=level)
         instance = model._load_instance(self.db_source, primary_key)
         if not instance:
             return self.out(Failure(f"No puedo cargar {subject} en origen"))
@@ -95,41 +93,39 @@ class Handler:
         # Dependencias previas
         for field_name, submodel in model.Meta.depends_on.items():
             f_key = submodel.Meta.primary_key
-            self.out(
-                f'Depende de {field_name} = {submodel!r}.{f_key}',
-                level=level,
-                )
+            if self.is_verbose:
+                self.out(
+                    f'Depende de {field_name} = {submodel!r}.{f_key}',
+                    level=level,
+                    )
             value = getattr(instance, field_name)
             if value is not None:
                 self.migrar_modelo(submodel, value, level=level+1)
         
         # Instancia actual
-        self.out(
-            f'Migrando instancia actual {model.__name__}[{primary_key}]',
-            level=level,
-            verbose=verbose,
-            )
+        if self.is_verbose:
+            self.out(
+                f'Migrando instancia actual {model.__name__}[{primary_key}]',
+                level=level,
+                )
         target = model._load_instance(self.db_target, primary_key)
         if target:  # Ya existe. Update
-            self.out(
-                self._do_update(model, instance, target),
-                level=level,
-                verbose=verbose,
-                )
+            result = self._do_update(model, instance, target)
+            if self.is_verbose:
+                self.out(result, level=level)
         else:  # Insert
-            self.out(
-                self._do_insert(model, instance),
-                level=level,
-                verbose=verbose,
-                )
+            result = self._do_insert(model, instance)
+            if self.is_verbose:
+                self.out(result, level=level)
         
         # modelos subordinados
         for submodel in model.Meta.master_of:
             submodel_name = submodel.__name__
-            self.out(
-                f'Migrando Entidad subordinada {submodel_name}',
-                verbose=verbose,
-                )
+            if self.is_verbose:
+                self.out(
+                    f'Migrando Entidad subordinada {submodel_name}',
+                    level=level+1,
+                    )
             masons = submodel._load_instances(
                 self.db_source,
                 model.Meta.primary_key.name,
@@ -145,6 +141,9 @@ class Handler:
             prog='madrox',
             description='Migrar entre bases de datos',
             )
+        group = parser.add_mutually_exclusive_group()
+        group.add_argument('-v', '--verbose', action='store_true')
+        group.add_argument('-m', '--muted', action='store_true')
         subparsers = parser.add_subparsers(help='Comandos displonibles')
         # ls
         ls_parser = subparsers.add_parser(
@@ -177,16 +176,13 @@ class Handler:
             help='Número de días a migrar',
             default=DEFAULT_SINCE_DAYS,
             )
-        group = migrate_parser.add_mutually_exclusive_group()
-        group.add_argument('-v', '--verbose', action='store_true')
-        group.add_argument('-m', '--muted', action='store_true')
         migrate_parser.set_defaults(func=self.cmd_migrate)
         return parser
 
     def run(self):
         parser = self.get_parser()
         options = parser.parse_args()
-        self.verbose = options.verbose
+        self.is_verbose = options.verbose
         self.is_muted = options.muted
         return options.func(options)
 
@@ -199,15 +195,14 @@ class Handler:
         return 0
 
     def cmd_migrate(self, options):
-        verbose = options.verbose
         models = options.model
         if len(models) == 1 and models[0] == 'all':
             models = list(catalog.keys())
-        self.out(
-            'Migrando registros creados o modificados'
-            f' en los ultimos {options.num_days} días.',
-            verbose=verbose,
-            )
+        if self.is_verbose:
+            self.out(
+                'Migrando registros creados o modificados'
+                f' en los ultimos {options.num_days} días.',
+                )
         tasks = {}
         with Progress() as progress:
             for model_name in models:
