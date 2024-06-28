@@ -84,7 +84,7 @@ class Handler:
 
     def migrar_modelo(self, model, primary_key, level=0):
         subject = model._locator(primary_key)
-        if self.is_verbose:
+        if self.options.verbose:
             self.out(f'Migrando [bold yellow]{subject}[/]', level=level)
         instance = model._load_instance(self.db_source, primary_key)
         if not instance:
@@ -93,7 +93,7 @@ class Handler:
         # Dependencias previas
         for field_name, submodel in model.Meta.depends_on.items():
             f_key = submodel.Meta.primary_key
-            if self.is_verbose:
+            if self.options.verbose:
                 self.out(
                     f'Depende de {field_name} = {submodel!r}.{f_key}',
                     level=level,
@@ -120,12 +120,9 @@ class Handler:
         
         # modelos subordinados
         for submodel in model.Meta.master_of:
-            submodel_name = submodel.__name__
-            if self.is_verbose:
-                self.out(
-                    f'Migrando Entidad subordinada {submodel_name}',
-                    level=level+1,
-                    )
+            self.out(f'Entidad dependiente {submodel}', level=level+1)
+            if self.options.verbose:
+                self.out(f'Veamos las entidades dependientes {submodel}', level=level+1)
             masons = submodel._load_instances(
                 self.db_source,
                 model.Meta.primary_key.name,
@@ -161,6 +158,15 @@ class Handler:
         graph_parser.add_argument('model', nargs='+')
         graph_parser.set_defaults(func=self.cmd_graph)
 
+        # duplicate (Migrate just one instance)
+        duplicate_parser = subparsers.add_parser(
+            'duplicate',
+            help='migrar una instancia de un modelo, dada su clave primaria',
+            )
+        duplicate_parser.add_argument('model')
+        duplicate_parser.add_argument('pk')
+        duplicate_parser.set_defaults(func=self.cmd_duplicate)
+
         # migrate
         migrate_parser = subparsers.add_parser(
             'migrate',
@@ -194,7 +200,19 @@ class Handler:
             self.print(model_name)
         return 0
 
+    def cmd_duplicate(self, options):
+        self.options = options
+        model_name = options.model
+        pk = options.pk
+        model = catalog[model_name]
+        if not model._is_migrable():
+            self.die('El modelo indicado no es migrable')
+        if self.options.verbose:
+            self.out(f'Migrando registro {pk} de {model}')
+        self.migrar_modelo(model, pk, level=0)
+
     def cmd_migrate(self, options):
+        self.options = options
         models = options.model
         if len(models) == 1 and models[0] == 'all':
             models = list(catalog.keys())

@@ -127,6 +127,7 @@ class Model:
     def _is_migrable(cls):
         return hasattr(cls, '_since') and callable(cls._since)
 
+
 class Catalog:
 
     def __init__(self):
@@ -696,7 +697,7 @@ class Noticia(Model):
 
 @catalog.register
 @dataclasses.dataclass
-class Bop(Model):
+class BOP(Model):
 
     class Meta:
         table_name = "Agora.BOP"
@@ -725,3 +726,60 @@ class Bop(Model):
             query='f_publicacion >= :1',
             num_days=num_days,
             )
+
+
+# Diarios de sesiones del PArlamento
+
+@dataclasses.dataclass
+class DS_Sumario(Model):
+
+    class Meta:
+        table_name = "Agora.DS_SUMARIO"
+        primary_key = PrimaryKey('id_ds', int)
+        depends_on = {}
+        master_of = set([])
+
+    id_ds: int
+    orden: int
+    pagina: int
+    texto: str
+    id_iniciativa: str
+    aplazada: str
+
+
+@catalog.register
+@dataclasses.dataclass
+class DS(Model):
+
+    class Meta:
+        table_name = "Agora.DS"
+        primary_key = PrimaryKey('id_ds', int)
+        depends_on = {
+            'legislatura': Legislatura,
+            }
+        master_of = set([DS_Sumario])
+
+    id_ds: int
+    n_ds: int
+    legislatura: int
+    f_publicacion: Date
+    publicar: str
+    f_notifica: Date
+    comentario: str
+    n_paginas: int
+    id_sesion: str
+    inicio_sesion: str
+    fin_sesion: str
+    pdf_filesize: int
+    pdf_ruta: str
+    ts_mod: str
+
+    @classmethod
+    def _since(cls, dbc, num_days):
+        return cls._keys_since(
+            source=dbc,
+            query='f_publicacion >= :1',
+            num_days=num_days,
+            )
+
+
