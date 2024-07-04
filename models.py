@@ -1,4 +1,4 @@
-#!/usr/bin/env python3
+#!/usr/bin/env python3.12
 
 from datetime import date as Date
 from datetime import datetime as DateTime
@@ -519,7 +519,7 @@ class Sesion(Model):
     id_usuario: str
     n_dias: int
     migrable: str
-    
+
     @classmethod
     def _since(cls, dbc, num_days=DEFAULT_SINCE_DAYS):
         return cls._keys_since(

@@ -1,3 +1,4 @@
+#!/usr/bin/env python3.12
 import cx_Oracle
 from datetime import date as Date
 

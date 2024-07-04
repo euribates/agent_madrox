@@ -1,4 +1,4 @@
-#!/usr/bin/env python3
+#!/usr/bin/env python3.12
 # -*- coding: utf-8 -*-
 
 import logging
@@ -101,7 +101,7 @@ class Handler:
             value = getattr(instance, field_name)
             if value is not None:
                 self.migrar_modelo(submodel, value, level=level+1)
-        
+
         # Instancia actual
         if self.is_verbose:
             self.out(
@@ -117,7 +117,7 @@ class Handler:
             result = self._do_insert(model, instance)
             if self.is_verbose:
                 self.out(result, level=level)
-        
+
         # modelos subordinados
         for submodel in model.Meta.master_of:
             self.out(f'Entidad dependiente {submodel}', level=level+1)

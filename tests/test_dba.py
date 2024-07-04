@@ -1,4 +1,4 @@
-#!/usr/bin/env python
+#!/usr/bin/env python3.12
 # -*- coding: utf-8 -*-
 
 from dataclasses import dataclass
