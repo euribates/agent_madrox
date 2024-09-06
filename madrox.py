@@ -147,7 +147,7 @@ class Handler:
             'ls',
             help='Listar modelos en el catálogo',
             )
-        ls_parser.add_argument('model', nargs='+')
+        ls_parser.add_argument('model', nargs='*')
         ls_parser.set_defaults(func=self.cmd_ls)
 
         # graph
@@ -194,7 +194,7 @@ class Handler:
 
     def cmd_ls(self, options):
         models = options.model
-        if len(models) == 1 and models[0] == 'all':
+        if len(models) == 0 or models[0] == 'all':
             models = list(catalog.keys())
         for model_name in models:
             self.print(model_name)

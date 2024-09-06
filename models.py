@@ -576,16 +576,25 @@ class Jornada(Model):
 class Acceso(Model):
 
     class Meta:
-        table_name = "COMUN.Acceso"
+        table_name = "Comun.Acceso"
         primary_key = PrimaryKey('id_acceso', int)
-        depends_on = {}
+        depends_on = {
+            'id_usuario': Usuario,
+            }
         master_of = set([])
 
     id_acceso: int
     id_aplicacion: int
     id_usuario: int
-    orden: int
     alta: DateTime
+
+    @classmethod
+    def _since(cls, dbc, num_days=DEFAULT_SINCE_DAYS):
+        return cls._keys_since(
+            source=dbc,
+            query='alta > :1',
+            num_days=num_days,
+            )
 
 
 @catalog.register
@@ -605,34 +614,6 @@ class Aplicacion(Model):
     alta: DateTime
     icono: str
     codigo: str
-
-    @classmethod
-    def _since(cls, dbc, num_days=DEFAULT_SINCE_DAYS):
-        return cls._keys_since(
-            source=dbc,
-            query='alta > :1',
-            num_days=num_days,
-            )
-
-
-@catalog.register
-@dataclasses.dataclass
-class Acceso(Model):
-
-    class Meta:
-        table_name = "Comun.Acceso"
-        primary_key = PrimaryKey('id_acceso', int)
-        depends_on = {
-            'id_usuario': Usuario,
-            'id_aplicacion': Aplicacion,
-            }
-        master_of = set([])
-
-    id_acceso: int
-    id_aplicacion: int
-    id_usuario: int
-    orden: int
-    alta: DateTime
 
     @classmethod
     def _since(cls, dbc, num_days=DEFAULT_SINCE_DAYS):
