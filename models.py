@@ -3,52 +3,41 @@
 from datetime import date as Date
 from datetime import datetime as DateTime
 from datetime import timedelta as TimeDelta
-from typing import Callable
 import dataclasses
 import logging
 
 from settings import DEFAULT_SINCE_DAYS
+
 import dba
+import dml
 
 logger = logging.getLogger(__name__)
 
 
-def as_ts_mod(dt):
-    return f'{dt.year:04d}{dt.month:04d}{dt.day:02d}000000'
+@dataclasses.dataclass(frozen=True, slots=True)
+class MetaModel:
+    table_name: str
+    primary_key: str
+    natural_keys: tuple = dataclasses.field(default_factory=tuple)
+    depends_on: dict = dataclasses.field(default_factory=dict)
+    master_of: set = dataclasses.field(default_factory=set)
 
 
-def as_list(values: list) -> str:
-    return ', '.join(values)
-
-
-def loop(sequence, start=0):
-    sequence = list(sequence)
-    if sequence:
-        last_pos = len(sequence) - 1
-        for index, value in enumerate(sequence):
-            is_first = bool(index == 0)
-            is_last = bool(index == last_pos)
-            yield (index+start, is_first, is_last, value)
-
-
-@dataclasses.dataclass
-class PrimaryKey:
-    name: str
-    cast: Callable
-
-
-@dataclasses.dataclass
 class Model:
+
+    Meta = None
 
     @classmethod
     def _field_names(cls):
         return [_.name for _ in dataclasses.fields(cls)]
 
-    def _to_dict(self, exclude=None):
+    @classmethod
+    def _to_dict(cls, obj, exclude=None):
+        assert isinstance(obj, Model)
         exclude = exclude or set([])
         return {
-            name: getattr(self, name)
-            for name in self._field_names()
+            name: getattr(obj, name)
+            for name in cls._field_names()
             if name not in exclude
             }
 
@@ -62,66 +51,76 @@ class Model:
         return cls(**dict_data)
 
     @classmethod
-    def _locator(cls, pk):
-        table_name = cls.Meta.table_name
-        pk_field = cls.Meta.primary_key.name
-        return f'{table_name}.{pk_field} = {pk!r}'
-
-    @classmethod
     def _load_instance(cls, db, pk):
         table_name = cls.Meta.table_name
-        names = as_list(cls._field_names())
-        query = f'{cls.Meta.primary_key.name} = :1'
-        sql = f'SELECT {names} FROM {table_name} WHERE {query}'
+        names = dba.as_list(cls._field_names())
+        query = f'{cls.Meta.primary_key} = :1'
+        sql = dml.Select(names).From(table_name).Where(query)
         return dba.get_row(db, sql, pk, cast=cls._from_dict)
 
     @classmethod
     def _load_instances(cls, db, field_name, value):
         table_name = cls.Meta.table_name
-        names = as_list(cls._field_names())
+        names = dba.as_list(cls._field_names())
         query = f'{field_name} = :1'
-        sql = f'SELECT {names} FROM {table_name} WHERE {query}'
+        sql = dml.Select(names).From(table_name).Where(query)
         return dba.get_rows(db, sql, value, cast=cls._from_dict)
 
     @classmethod
+    def _load_from_natural_keys(cls, dbc, obj):
+        if cls.Meta.natural_keys:
+            sql = dml.Select('*').From(cls.Meta.table_name)
+            conditions = {
+                field_name: getattr(obj, field_name)
+                for field_name in cls.Meta.natural_keys
+                }
+            sql = sql.Filter(**conditions)
+            return dba.get_row(dbc, sql, cast=cls._from_dict)
+        return None
+
+    def not_exists(self, dbc) -> bool:
+        table_name = self.Meta.table_name
+        sql = dml.Select('Count(*)').From(table_name)
+        if self.Meta.natural_keys:
+            conditions = {
+                field_name: getattr(self, field_name)
+                for field_name in self.Meta.natural_keys
+                }
+        else:
+            value = getattr(self, self.Meta.primary_key)
+            conditions = {self.Meta.primary_key: value}
+        sql = sql.Filter(**conditions)
+        return dba.get_scalar(dbc, sql) == 0
+
+    @classmethod
     def _insert(cls, dbc, data: dict):
+        table_name = cls.Meta.table_name
+        sql = dml.Insert(table_name)
         names = cls._field_names()
         values = [data[name] for name in names]
-        placeholders = [f':{i+1}' for i in range(len(names))]
-        sql = (
-            f'INSERT INTO {cls.Meta.table_name} ({as_list(names)})'
-            f'     VALUES ({as_list(placeholders)})'
-            )
-        return dba.execute(dbc, sql, *values)
+        for name, value in zip(names, values):
+            sql = sql.Set(name, value)
+        return dba.execute(dbc, sql)
 
     @classmethod
     def _update(cls, dbc, pk, new_values):
-        lines = [f'UPDATE {cls.Meta.table_name}']
-        values = []
-        for idx, is_first, is_last, name in loop(new_values, start=1):
-            before = '  SET' if is_first else '     '
-            after = '' if is_last else ','
-            lines.append(f'{before} {name} = :{idx}{after}')
-            values.append(new_values[name])
-        lines.append(f' WHERE {cls.Meta.primary_key.name} = :{idx+1}')
-        values.append(pk)
-        sql = '\n'.join(lines)
-        return dba.execute(dbc, sql, *values)
+        table_name = cls.Meta.table_name
+        sql = dml.Update(table_name)
+        for name in new_values:
+            value = new_values[name]
+            sql = sql.Set(name, value)
+        sql = sql.Where(f'{cls.Meta.primary_key} = {pk!r}')
+        return dba.execute(dbc, sql)
 
     @classmethod
     def _keys_since(cls, source, query, num_days=DEFAULT_SINCE_DAYS, cast=None):
         fecha = Date.today() - TimeDelta(days=num_days)
         if cast:
             fecha = cast(fecha)
-        sql = (
-            f'SELECT {cls.Meta.primary_key.name } as pk'
-            f'  FROM {cls.Meta.table_name}'
-            f' WHERE {query}'
-            )
-        return dba.get_rows(
-            source, sql, fecha,
-            cast=lambda row: row['pk'],
-            )
+        table_name = cls.Meta.table_name
+        pk_name = cls.Meta.primary_key
+        sql = dml.Select(f'{pk_name} as pk').From(table_name).Where(query)
+        return dba.get_rows(source, sql, fecha, cast=lambda row: row['pk'])
 
     @classmethod
     def _is_migrable(cls):
@@ -141,7 +140,7 @@ class Catalog:
             assert isinstance(field_name, str)
             assert field_name in model._field_names(), (
                 f'Campo {field_name} no definido en {_model!r}.'
-                f' Los posibles valores son: {as_list(_model._field_names())}.'
+                f' Los posibles valores son: {dba.as_list(_model._field_names())}.'
                 )
         for _model in model.Meta.master_of:
             assert issubclass(_model, Model)
@@ -164,11 +163,10 @@ catalog = Catalog()
 @dataclasses.dataclass
 class Legislatura(Model):
 
-    class Meta:
-        table_name = "Agora.Legislatura"
-        primary_key = PrimaryKey('legislatura', int)
-        depends_on = {}
-        master_of = set([])
+    Meta = MetaModel(
+        table_name="Agora.Legislatura",
+        primary_key='legislatura',
+        )
 
     legislatura: int
     descripcion: str
@@ -190,12 +188,10 @@ class Legislatura(Model):
 @dataclasses.dataclass
 class Usuario(Model):
 
-    class Meta:
-
-        table_name = "Comun.Usuario"
-        primary_key = PrimaryKey('id_usuario', int)
-        depends_on = {}
-        master_of = set([])
+    Meta = MetaModel(
+        table_name="Comun.Usuario",
+        primary_key='id_usuario',
+        )
 
     id_usuario: int
     id_servicio: int
@@ -240,11 +236,10 @@ class Usuario(Model):
 @dataclasses.dataclass
 class Proyecto(Model):
 
-    class Meta:
-        table_name = "Tareas.Proyecto"
-        primary_key = PrimaryKey('id_proyecto', int)
-        depends_on = {}
-        master_of = {}
+    Meta = MetaModel(
+        table_name="Tareas.Proyecto",
+        primary_key='id_proyecto',
+        )
 
     id_proyecto: int
     nombre: str
@@ -266,11 +261,11 @@ class Proyecto(Model):
 @dataclasses.dataclass
 class Nota(Model):
 
-    class Meta:
-        table_name = "Tareas.Nota"
-        primary_key = PrimaryKey('id_nota', int)
-        depends_on = {}
-        master_of = set([])
+    Meta = MetaModel(
+        table_name="Tareas.Nota",
+        primary_key='id_nota',
+        natural_keys={'id_tarea', 'numero'},
+        )
 
     id_nota: int
     id_tarea: int
@@ -294,14 +289,15 @@ class Nota(Model):
 @dataclasses.dataclass
 class Tarea(Model):
 
-    class Meta:
-        table_name = "Tareas.Tarea"
-        primary_key = PrimaryKey('id_tarea', int)
-        depends_on = {
+    Meta = MetaModel(
+        table_name="Tareas.Tarea",
+        primary_key='id_tarea',
+        depends_on={
             'id_proyecto': Proyecto,
             'id_usr_solicitante': Usuario,
-            }
-        master_of = {Nota}
+            },
+        master_of={Nota},
+        )
 
     id_tarea: int
     titulo: str
@@ -328,15 +324,15 @@ class Tarea(Model):
             num_days=num_days,
             )
 
+
 @catalog.register
 @dataclasses.dataclass
 class Isla(Model):
 
-    class Meta:
-        table_name = "AGORA.Isla"
-        primary_key = PrimaryKey('id_isla', int)
-        depends_on = {}
-        master_of = set([])
+    Meta = MetaModel(
+        table_name="Agora.Isla",
+        primary_key='id_isla',
+        )
 
     id_isla: int
     descripcion: str
@@ -349,7 +345,7 @@ class Isla(Model):
             source=dbc,
             query='ts_mod >= :1',
             num_days=num_days,
-            cast=as_ts_mod,
+            cast=dba.as_ts_mod,
             )
 
 
@@ -357,11 +353,10 @@ class Isla(Model):
 @dataclasses.dataclass
 class Sala(Model):
 
-    class Meta:
-        table_name = "AGORA.Sala"
-        primary_key = PrimaryKey('id_sala', int)
-        depends_on = {}
-        master_of = set([])
+    Meta = MetaModel(
+        table_name="Agora.Sala",
+        primary_key='id_sala',
+        )
 
     id_sala: int
     descripcion: str
@@ -375,7 +370,7 @@ class Sala(Model):
     def _since(cls, dbc, num_days=DEFAULT_SINCE_DAYS):
         fecha = DateTime.now() - TimeDelta(days=num_days)
         sql = (
-            f'Select {cls.Meta.primary_key.name} as pk'
+            f'Select {cls.Meta.primary_key} as pk'
             f'  from {cls.Meta.table_name}'
             '  WHERE updated_at > :1'
             )
@@ -389,14 +384,14 @@ class Sala(Model):
 @dataclasses.dataclass
 class Organo(Model):
 
-    class Meta:
-        table_name = "AGORA.ORGANO"
-        primary_key = PrimaryKey('id_organo', str)
-        depends_on = {
+    Meta = MetaModel(
+        table_name="Agora.organo",
+        primary_key='id_organo',
+        depends_on={
             'id_isla': Isla,
             'legislatura': Legislatura,
-            }
-        master_of = set([])
+            },
+        )
 
     id_organo: str
     legislatura: int
@@ -429,20 +424,18 @@ class Organo(Model):
             source=dbc,
             query='ts_mod >= :1',
             num_days=num_days,
-            cast=as_ts_mod,
+            cast=dba.as_ts_mod,
             )
-
 
 
 @catalog.register
 @dataclasses.dataclass
 class SesionDatos(Model):
 
-    class Meta:
-        table_name = "AGORA.Sesion_Datos"
-        primary_key = PrimaryKey('id_sesion', str)
-        depends_on = {}
-        master_of = set([])
+    Meta = MetaModel(
+        table_name="Agora.sesion_datos",
+        primary_key='id_sesion',
+        )
 
     id_sesion: str
     convocada: str
@@ -464,13 +457,11 @@ class SesionDatos(Model):
 @dataclasses.dataclass
 class Asunto(Model):
 
-    class Meta:
-        table_name = "AGORA.Asunto"
-        primary_key = PrimaryKey('id_asunto', str)
-        depends_on = {
-            'legislatura': Legislatura,
-            }
-        master_of = set([])
+    Meta = MetaModel(
+        table_name="AGORA.Asunto",
+        primary_key='id_asunto',
+        depends_on={'legislatura': Legislatura},
+        )
 
     id_asunto: str
     id_sesion: str
@@ -492,17 +483,16 @@ class Asunto(Model):
     extracto2: str
 
 
-
 @catalog.register
 @dataclasses.dataclass
 class Sesion(Model):
-    class Meta:
-        table_name = "AGORA.Sesion"
-        primary_key = PrimaryKey('id_sesion', str)
-        depends_on = {
-            'id_organo': Organo,
-            }
-        master_of = set([SesionDatos, Asunto])
+
+    Meta = MetaModel(
+        table_name="Agora.sesion",
+        primary_key='id_sesion',
+        depends_on={'id_organo': Organo},
+        master_of={SesionDatos, Asunto},
+        )
 
     id_sesion: str
     id_organo: str
@@ -529,20 +519,19 @@ class Sesion(Model):
             )
 
 
-
 @catalog.register
 @dataclasses.dataclass
 class Jornada(Model):
 
-    class Meta:
-        table_name = "AGORA.Jornada"
-        primary_key = PrimaryKey('id_jornada', int)
-        depends_on = {
+    Meta = MetaModel(
+        table_name="Agora.jornada",
+        primary_key='id_jornada',
+        depends_on={
             'id_sala': Sala,
             'id_organo': Organo,
             'id_sesion': Sesion,
-            }
-        master_of = set([])
+            },
+        )
 
     id_jornada: int
     n_grabaciones: int
@@ -575,13 +564,14 @@ class Jornada(Model):
 @dataclasses.dataclass
 class Acceso(Model):
 
-    class Meta:
-        table_name = "Comun.Acceso"
-        primary_key = PrimaryKey('id_acceso', int)
-        depends_on = {
+    Meta = MetaModel(
+        table_name="Comun.Acceso",
+        primary_key='id_acceso',
+        depends_on={
             'id_usuario': Usuario,
-            }
-        master_of = set([])
+            },
+        natural_keys={'id_aplicacion', 'id_usuario'},
+        )
 
     id_acceso: int
     id_aplicacion: int
@@ -601,11 +591,11 @@ class Acceso(Model):
 @dataclasses.dataclass
 class Aplicacion(Model):
 
-    class Meta:
-        table_name = "Comun.Aplicacion"
-        primary_key = PrimaryKey('id_aplicacion', int)
-        depends_on = {}
-        master_of = set([Acceso])
+    Meta = MetaModel(
+        table_name="Comun.aplicacion",
+        primary_key='id_aplicacion',
+        master_of={Acceso},
+        )
 
     id_aplicacion: int
     nombre: str
@@ -628,11 +618,10 @@ class Aplicacion(Model):
 @dataclasses.dataclass
 class Parrafo(Model):
 
-    class Meta:
-        table_name = "Noticias.Parrafo"
-        primary_key = PrimaryKey('id_parrafo', int)
-        depends_on = {}
-        master_of = set([])
+    Meta = MetaModel(
+        table_name="Noticias.parrafo",
+        primary_key='id_parrafo',
+        )
 
     id_parrafo: int
     id_noticia: int
@@ -640,16 +629,15 @@ class Parrafo(Model):
     texto: str
 
 
-
 @catalog.register
 @dataclasses.dataclass
 class Noticia(Model):
 
-    class Meta:
-        table_name = "Noticias.Noticia"
-        primary_key = PrimaryKey('id_noticia', int)
-        depends_on = {}
-        master_of = set([Parrafo])
+    Meta = MetaModel(
+        table_name="Noticias.Noticia",
+        primary_key='id_noticia',
+        master_of={Parrafo},
+        )
 
     id_noticia: int
     titulo: str
@@ -680,13 +668,11 @@ class Noticia(Model):
 @dataclasses.dataclass
 class BOP(Model):
 
-    class Meta:
-        table_name = "Agora.BOP"
-        primary_key = PrimaryKey('id_bop', int)
-        depends_on = {
-            'legislatura': Legislatura,
-            }
-        master_of = set([])
+    Meta = MetaModel(
+        table_name="Agora.bop",
+        primary_key='id_bop',
+        depends_on={'legislatura': Legislatura},
+        )
 
     id_bop: int
     n_bop: int
@@ -714,11 +700,10 @@ class BOP(Model):
 @dataclasses.dataclass
 class DS_Sumario(Model):
 
-    class Meta:
-        table_name = "Agora.DS_SUMARIO"
-        primary_key = PrimaryKey('id_ds', int)
-        depends_on = {}
-        master_of = set([])
+    Meta = MetaModel(
+        table_name="Agora.ds_sumario",
+        primary_key='id_ds',
+        )
 
     id_ds: int
     orden: int
@@ -732,13 +717,12 @@ class DS_Sumario(Model):
 @dataclasses.dataclass
 class DS(Model):
 
-    class Meta:
-        table_name = "Agora.DS"
-        primary_key = PrimaryKey('id_ds', int)
-        depends_on = {
-            'legislatura': Legislatura,
-            }
-        master_of = set([DS_Sumario])
+    Meta = MetaModel(
+        table_name="Agora.ds",
+        primary_key='id_ds',
+        depends_on={'legislatura': Legislatura},
+        master_of={DS_Sumario},
+        )
 
     id_ds: int
     n_ds: int
@@ -762,5 +746,3 @@ class DS(Model):
             query='f_publicacion >= :1',
             num_days=num_days,
             )
-
-

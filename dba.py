@@ -7,6 +7,14 @@ import functools
 from prettyconf import config
 
 
+def as_ts_mod(dt):
+    return f'{dt.year:04d}{dt.month:04d}{dt.day:02d}000000'
+
+
+def as_list(values: list[str]) -> str:
+    return ', '.join(values)
+
+
 def connection_params_from_db_url(conn_string):
     assert '://' in conn_string
     user = password = host = port = name = None
@@ -96,7 +104,6 @@ def get_rows(dbc, sql, *args, cast=None):
     parameters = list(args)
     with dbc.cursor() as cur:
         cur.execute(sql, parameters)
-
         field_names = [desc[0].lower() for desc in cur.description]
         rows = cur.fetchall()
         if rows:
@@ -107,10 +114,10 @@ def get_rows(dbc, sql, *args, cast=None):
     return []
 
 
-def get_scalar(dbc, sql, cast=None, default=None):
+def get_scalar(dbc, sql, *args, cast=None, default=None):
     """Obtener un único valor desde la base de datos.
     """
-    row = get_row(dbc, sql, cast=cast)
+    row = get_row(dbc, sql, *args, cast=cast)
     result = list(row.values())[0] if row else default
     return result
 

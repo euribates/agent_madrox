@@ -60,8 +60,8 @@ class Handler:
             )
 
     def _do_update(self, model, source, target):
-        primary_key = getattr(source, model.Meta.primary_key.name)
-        exclude = set([model.Meta.primary_key.name])
+        primary_key = getattr(source, model.Meta.primary_key)
+        exclude = set([model.Meta.primary_key])
         new_values = model._to_dict(source, exclude=exclude)
         old_values = model._to_dict(target, exclude=exclude)
         if new_values != old_values:  # Update needed
@@ -83,7 +83,7 @@ class Handler:
         return Success('No existe. Insertado')
 
     def migrar_modelo(self, model, primary_key, level=0):
-        subject = model._locator(primary_key)
+        subject = f'{model.Meta.table_name}[{primary_key!r}]'
         if self.options.verbose:
             self.out(f'Migrando [bold yellow]{subject}[/]', level=level)
         instance = model._load_instance(self.db_source, primary_key)
@@ -108,13 +108,19 @@ class Handler:
                 f'Migrando instancia actual {model.__name__}[{primary_key}]',
                 level=level,
                 )
-        target = model._load_instance(self.db_target, primary_key)
-        if target:  # Ya existe. Update
-            result = self._do_update(model, instance, target)
+        no_existe = instance.not_exists(self.db_target)
+        if no_existe:  # Insert
+            result = self._do_insert(model, instance)
             if self.is_verbose:
                 self.out(result, level=level)
-        else:  # Insert
-            result = self._do_insert(model, instance)
+        else:
+            target = model._load_instance(self.db_target, primary_key)
+            if not target:
+                target = model._load_from_natural_keys(self.db_target, instance)
+            if target:
+                result = self._do_update(model, instance, target)
+            else:
+                result = self._do_insert(model, instance)
             if self.is_verbose:
                 self.out(result, level=level)
 
@@ -125,11 +131,11 @@ class Handler:
                 self.out(f'Veamos las entidades dependientes {submodel}', level=level+1)
             masons = submodel._load_instances(
                 self.db_source,
-                model.Meta.primary_key.name,
+                model.Meta.primary_key,
                 value=primary_key,
                 )
             for mason in masons:
-                mason_pk = getattr(mason, submodel.Meta.primary_key.name)
+                mason_pk = getattr(mason, submodel.Meta.primary_key)
                 self.migrar_modelo(submodel, mason_pk, level=level+1)
         return Success()
 
@@ -254,7 +260,7 @@ class Handler:
                 self.print(f' -> Depende de {_field_name} -> {name}')
             for _submodel in model.Meta.master_of:
                 name = _submodel.__name__
-                key = model.Meta.primary_key.name
+                key = model.Meta.primary_key
                 self.print(f' <- Master de {name}.{key}')
         return 0
 

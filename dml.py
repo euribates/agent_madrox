@@ -15,6 +15,16 @@ pat_table_as_alias = re.compile(r"(.+)\s+as\s+(\.+)", flags=re.I)
 # Funcionaes auxiliares
 
 
+def forloop(sequence, start=0):
+    sequence = list(sequence)
+    if sequence:
+        last_pos = len(sequence) - 1
+        for index, value in enumerate(sequence):
+            is_first = bool(index == 0)
+            is_last = bool(index == last_pos)
+            yield (index+start, is_first, is_last, value)
+
+
 def sql_safe_string(s):
     if isinstance(s, six.binary_type):
         s = s.rstrip()
@@ -125,6 +135,15 @@ class Field:
         )
 
 
+class Null(Field):
+
+    def as_sql(self):
+        return "NULL"
+
+    def parse(self, s):
+        return None
+
+
 class FieldInteger(Field):
     def as_sql(self):
         return "{:d}".format(self.value)
@@ -192,12 +211,10 @@ def as_string(value):
 
 
 class FieldDate(Field):
+
     def as_sql(self):
-        return "'%02d/%02d/%04d'" % (
-            self.value.month,
-            self.value.day,
-            self.value.year,
-        )
+        f = self.value
+        return f"TO_DATE('{f.year:04d}-{f.month:02d}-{f.day:02d}', 'YYYY-MM-DD')"
 
     def parse(self, s):
         self.value = arrow.get(s)
@@ -205,14 +222,13 @@ class FieldDate(Field):
 
 class FieldTimestamp(Field):
     def as_sql(self):
-        return "'%04d-%02d-%02d %02d:%02d:%02d'" % (
-            self.value.year,
-            self.value.month,
-            self.value.day,
-            self.value.hour,
-            self.value.minute,
-            self.value.second,
-        )
+        f = self.value
+        return (
+            "TO_DATE("
+            f"'{f.year:04d}-{f.month:02d}-{f.day:02d}"
+            f" {f.hour:02d}:{f.minute:02d}:{f.second:02d}"
+            "', 'YYYY-MM-DD HH24:MI:SS')"
+            )
 
     def parse(self, s):
         self.value = arrow.get(s)
@@ -249,6 +265,8 @@ def new_field(value):
     @param value: Valor a partir del cual se creará el objeto L{Field}.
     @see: L{Field}
     """
+    if value is None:
+        return Null()
     tipo = type(value)
     if tipo in six.integer_types:
         return FieldInteger(value)
@@ -440,7 +458,7 @@ class Select:
         self._joins.append(("JOIN", tabla, alias, condicion))
         return self
 
-    def filter(self, **kwargs):
+    def Filter(self, **kwargs):
         kwargs.pop("tron", False)
         for k in kwargs:
             self.And(get_predicate(k, kwargs[k]))
@@ -576,8 +594,6 @@ class Insert:
             self._values[nombre] = new_field(valor)
         return self
 
-    set = Set
-
     def get(self, nombre):
         nombre = nombre.upper()
         if nombre in self._fields:
@@ -611,4 +627,106 @@ class Insert:
             ]
         values = [self._values[k] for k in self._fields]
         buff.append(' VALUES (%s)' % self.join_and_format(values))
+        return '\n'.join(buff)
+
+
+# --[ Update ]---------------------------------------------------------
+
+
+class Update:
+    """
+    El objetivo de esta clase es poder escribir
+    sentencias Update SQL de forma sencilla. Permite ir
+    componiendo la sentencia mediante distintas llamadas.
+
+        Ejemplo de Uso:
+
+        >>> from Libreria.Base.Database import Update
+        >>> sql = Update('Isla')
+        >>> sql = sql.Set('Descripcion', 'San Borondon')
+        >>> sql = sql.Where('Isla = 9')
+        >>> print(sql)
+        UPDATE Isla
+           SET Descripcion = 'San Borondon'
+         WHERE Isla = 9
+
+    """
+
+    def __init__(self, tabla):
+        """Constructor"""
+        self.tabla = tabla
+        self._fields = []
+        self._values = {}
+        self._where = []
+
+    def Set(self, nombre, valor):
+        """Agregar asignaciones de valores."""
+        nombre = nombre.upper()
+        if nombre not in self._fields:
+            self._fields.append(nombre)
+        self._values[nombre] = new_field(valor)
+        return self
+
+    def SetLiteral(self, nombre, valor):
+        nombre = nombre.upper()
+        if nombre not in self._fields:
+            self._fields.append(nombre)
+        self._values[nombre] = str(valor)
+        return self
+
+    def SetExpr(self, nombre, expr):
+        nombre = nombre.upper()
+        if nombre not in self._fields:
+            self._fields.append(nombre)
+        self._values[nombre] = expr
+        return self
+
+    def Where(self, condicion):
+        """Añadir una condición WHERE a la consulta.
+
+        @param condicion:Condición de seleccion
+        @type condicion: string
+        """
+        if condicion not in self._where:
+            self._where.append(condicion)
+        return self
+
+    def And(self, condicion):
+        """Añadir una condición con el conector AND a la consulta.
+
+        @param condicion: Condición de seleccion
+        @type condicion: string
+        @see: L{Where}, L{Or}
+        """
+        self._where.append(condicion)
+        return self
+
+    def __str__(self):
+        """Retorna la sentencia UPDATE en forma de string.
+
+        @return: La sentencia SQL construida.
+        @rtype: string
+        """
+        if not self._where:
+            raise ValueError(
+                'No se acepta una sentencia Update'
+                ' que afecte a toda la tabla, tiene que'
+                ' incluir al menos una condicion'
+                )
+        if not self._values:
+            raise ValueError(
+                'No se ha especificado una clausula'
+                ' Update Válida. Falta los valores'
+                ' de los campos'
+                )
+        buff = [f'UPDATE {self.tabla}']
+        for (index, is_first, is_last, nombre) in forloop(self._fields):
+            value = self._values[nombre]
+            sep = '' if is_last else ','
+            prefix = '   SET' if is_first else '      '
+            buff.append(f'{prefix} {nombre} = {value}{sep}')
+        first, *rest = self._where
+        buff.append(f' WHERE {first}')
+        for cond in rest:
+            buff.append('   AND {cond}')
         return '\n'.join(buff)
