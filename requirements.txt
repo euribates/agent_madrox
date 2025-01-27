@@ -1,4 +1,6 @@
 prettyconf
-psycopg2
 pytest
 typer
+arrow
+cx_oracle
+psycopg2-binary
