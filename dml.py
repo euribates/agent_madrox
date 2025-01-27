@@ -1,10 +1,8 @@
-#!/usr/bin/env python3.12
-# -*- coding: utf-8 -*-
+#!/usr/bin/env python3
 
 import datetime
-from decimal import Decimal
+import decimal
 import re
-import six
 
 import arrow
 #  Expresiones regulares para parsear las partes de las sentencias
@@ -26,14 +24,14 @@ def forloop(sequence, start=0):
 
 
 def sql_safe_string(s):
-    if isinstance(s, six.binary_type):
+    if isinstance(s, bytes):
         s = s.rstrip()
         s = s.replace(b"\r\n", b"\n")
         # replace cp1252 LEFT/RIGHT DOUBLE QUOTATION MARK
         s = s.replace(b"\x93", b'"')
         s = s.replace(b"\x94", b'"')
         s = s.replace(b"'", b"''")
-    elif isinstance(s, six.text_type):
+    elif isinstance(s, str):
         s = s.rstrip()
         s = s.replace("\r\n", "\n")
         s = s.replace("'", "''")
@@ -161,7 +159,7 @@ class FieldDecimal(Field):
         return str(self.value)
 
     def parse(self, s):
-        self.value = Decimal(s)
+        self.value = decimal.Decimal(s)
 
 
 def as_decimal(value):
@@ -268,13 +266,13 @@ def new_field(value):
     if value is None:
         return Null()
     tipo = type(value)
-    if tipo in six.integer_types:
+    if tipo is int:
         return FieldInteger(value)
-    elif tipo == float:
+    elif tipo is float:
         return FieldFloat(value)
-    elif isinstance(value, Decimal):
+    elif isinstance(value, decimal.Decimal):
         return FieldDecimal(value)
-    elif tipo in six.string_types:
+    elif tipo is str or tipo is bytes:
         return FieldString(value)
     elif tipo == datetime.date:
         return FieldDate(value)
