@@ -746,3 +746,80 @@ class DS(Model):
             query='f_publicacion >= :1',
             num_days=num_days,
             )
+
+
+@catalog.register
+@dataclasses.dataclass
+class Tramite(Model):
+
+    Meta = MetaModel(
+        table_name="Agora.tramite",
+        primary_key='id_tramite',
+        )
+
+    id_tramite: str
+    f_tramite: Date
+    tipo_tramite: str
+    id_iniciativa: str 
+    orden: int
+    confidencialidad: str
+    n_publicacion: str
+    n_registro: str
+    n_sesion: int
+    legislatura: int
+    texto_recordatorio: str
+    f_recordatorio: Date
+    organo_tramite: int
+    pagina: str
+    tipo_iniciativa: str
+    tipo_publicacion: str
+    id_usuario: str
+    ts_mod: str
+    id_tipo_tramite: str
+    id_organo_tramite: str
+    migrable: str
+
+    @classmethod
+    def _since(cls, dbc, num_days):
+        return cls._keys_since(
+            source=dbc,
+            query='f_tramite >= :1',
+            num_days=num_days,
+            )
+
+
+
+@catalog.register
+@dataclasses.dataclass
+class Iniciativa(Model):
+
+    Meta = MetaModel(
+        table_name="Agora.iniciativa",
+        primary_key='id_iniciativa',
+        master_of={Tramite},
+        )
+
+    id_iniciativa: str
+    extracto: str
+    f_creacion: Date
+    observaciones: str
+    situacion: str
+    tipo: str
+    id_usuario: str
+    ts_mod: str
+    id_registro_entrada: str
+    id_dictaminante: str
+    motivo_convocatoria: str
+    procedimiento: str
+    legislatura: int
+    tipo_finalizacion: str
+    id_organo_a_convocar: str
+    migrable: str
+
+    @classmethod
+    def _since(cls, dbc, num_days):
+        return cls._keys_since(
+            source=dbc,
+            query='f_creacion >= :1',
+            num_days=num_days,
+            )
